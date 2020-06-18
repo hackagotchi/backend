@@ -1,5 +1,6 @@
 use actix_web::{get, App, HttpServer, HttpResponse, HttpRequest, web};
 
+pub mod models;
 #[get("/user/{id}")]
 async fn get_user(_req: HttpRequest) -> HttpResponse {
     /*!
