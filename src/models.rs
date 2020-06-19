@@ -30,6 +30,16 @@ pub struct User {
     pub contact: UserContact,
 }
 
+#[derive(Deserialize)]
+pub struct UserRequest {
+    pub id: uuid::Uuid,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct Hackstead {
+
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
