@@ -4,15 +4,15 @@ packages:
 repositories: {}
 shell: false
 sources:
-- https://github.com/hackagotchi/backend
+  - https://git.sr.ht/~muirrum/hackagotchi-backend
 tasks:
 - setup: |
-    rustup toolchain install nightly stable
-    cd backend/
+    rustup toolchain install stable
+    cd hackagotchi-backend/
     rustup run stable cargo fetch
 - stable: |
     rustup default stable
-    cd backend/
+    cd hackagotchi-backend/
     cargo build
     cargo test
     cargo fmt -- --check
