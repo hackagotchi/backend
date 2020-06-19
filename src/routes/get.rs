@@ -1,7 +1,7 @@
-use actix_web::{get, HttpRequest, HttpResponse, web};
-use fll_scoring::{data::get_mongo_database, errors::ServiceError};
-use bson::doc;
 use crate::models::{User, UserContact};
+use actix_web::{get, web, HttpRequest, HttpResponse};
+use bson::doc;
+use fll_scoring::{data::get_mongo_database, errors::ServiceError};
 
 #[get("/user/")]
 pub async fn get_user(form: web::Form<User>) -> Result<HttpResponse, ServiceError> {
