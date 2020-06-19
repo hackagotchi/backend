@@ -24,6 +24,12 @@ impl UserContact {
     }
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct User {
+    pub id: uuid::Uuid,
+    pub contact: UserContact,
+}
+
 #[cfg(test)]
 mod test {
     use super::*;
@@ -72,8 +78,4 @@ mod test {
     }
 }
 
-#[derive(Serialize, Deserialize, Clone)]
-pub struct User {
-    pub id: uuid::Uuid,
-    pub contact: UserContact,
-}
+
