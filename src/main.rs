@@ -1,7 +1,7 @@
-use actix_web::{get, App, HttpServer, HttpResponse, HttpRequest, web};
+use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer};
 
-pub mod routes;
 pub mod models;
+pub mod routes;
 
 #[get("/user/{id}")]
 async fn get_user(_req: HttpRequest) -> HttpResponse {
@@ -14,12 +14,8 @@ async fn get_user(_req: HttpRequest) -> HttpResponse {
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
-    
-    HttpServer::new(move || {
-        App::new()
-            .service(get_user)
-    })
-    .bind("127.0.0.1:8000")?
-    .run()
-    .await
+    HttpServer::new(move || App::new().service(get_user))
+        .bind("127.0.0.1:8000")?
+        .run()
+        .await
 }
