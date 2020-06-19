@@ -15,3 +15,4 @@ tasks:
     cd backend/
     cargo build
     cargo test
+    cargo fmt -- --check
