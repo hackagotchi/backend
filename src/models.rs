@@ -34,6 +34,7 @@ mod test {
 	const USER_2: &'static str = "U2";
 	const USER_3: &'static str = "U3";
 	
+	#[test]
 	fn slack_contact_fetching() {
 		let s = UserContact::Slack(USER_1.to_string());
 		assert_eq!(
@@ -48,6 +49,7 @@ mod test {
 		);
 	}
 	
+	#[test]
 	fn email_contact_fetching() {
 		let e = UserContact::Email(USER_2.to_string());
 		assert_eq!(
@@ -62,6 +64,7 @@ mod test {
 		);
 	}
 	
+	#[test]
 	fn both_contact_fetching() {
 		let both = UserContact::Both {
 			slack: USER_1.to_string(),
