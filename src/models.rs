@@ -1,6 +1,7 @@
 use serde::{Serialize, Deserialize};
+use std::clone::Clone;
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub enum UserContact {
 	Email(String),
 	Slack(String),
@@ -79,7 +80,7 @@ mod test {
 	}
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize, Clone)]
 pub struct User {
 	pub id: uuid::Uuid,
 	pub contact: UserContact
