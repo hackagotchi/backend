@@ -59,7 +59,7 @@ mod test {
 		);
 		assert_eq!(
 			e.slack(),
-			Some(USER_1),
+			None,
 			"email only contact shouldn't have slack"
 		);
 	}
