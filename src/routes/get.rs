@@ -1,10 +1,10 @@
-use crate::models::{User, UserContact};
+use crate::models::{User, UserContact, UserRequest};
 use actix_web::{get, web, HttpRequest, HttpResponse};
-use bson::doc;
+use bson::{doc, Bson};
 use fll_scoring::{data::get_mongo_database, errors::ServiceError};
 
 #[get("/user/")]
-pub async fn get_user(form: web::Form<User>) -> Result<HttpResponse, ServiceError> {
+pub async fn get_user(form: web::Form<UserRequest>) -> Result<HttpResponse, ServiceError> {
     let user_id = form.id;
     let db = get_mongo_database().await?;
     let collection = db.collection("users");
@@ -14,8 +14,22 @@ pub async fn get_user(form: web::Form<User>) -> Result<HttpResponse, ServiceErro
         .await?
         .ok_or(ServiceError::NoData)?;
 
+    let res_contact = match result.get("contact") {
+        Some(bson) => bson,
+        None => {
+            return Err(ServiceError::NoData);
+        }
+    };
+
+    let uc: UserContact = match bson::from_bson(res_contact.clone()) {
+        Ok(uc) => uc,
+        Err(_) => {
+            return Err(ServiceError::InternalServerError);
+        }
+    };
+
     Ok(HttpResponse::Ok().json(User {
         id: user_id,
-        contact: form.contact.clone(),
+        contact: uc,
     }))
 }
