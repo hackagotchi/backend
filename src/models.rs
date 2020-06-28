@@ -36,9 +36,7 @@ pub struct UserRequest {
 }
 
 #[derive(Serialize, Deserialize)]
-pub struct Hackstead {
-
-}
+pub struct Hackstead {}
 
 #[cfg(test)]
 mod test {
@@ -87,5 +85,3 @@ mod test {
         );
     }
 }
-
-

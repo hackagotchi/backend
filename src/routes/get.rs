@@ -1,7 +1,7 @@
+use crate::data::get_mongo_database;
 use crate::models::{User, UserContact, UserRequest};
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use bson::{doc, Bson};
-use crate::data::get_mongo_database;
 use fll_scoring::errors::ServiceError;
 
 #[get("/user/")]
