@@ -2,7 +2,7 @@ use crate::data::get_mongo_database;
 use crate::models::{User, UserContact, UserRequest};
 use actix_web::{get, web, HttpRequest, HttpResponse};
 use bson::{doc, Bson};
-use fll_scoring::errors::ServiceError;
+use hcor::errors::ServiceError;
 
 #[get("/user/")]
 pub async fn get_user(form: web::Form<UserRequest>) -> Result<HttpResponse, ServiceError> {
