@@ -15,19 +15,10 @@ pub async fn get_user(form: web::Form<UserRequest>) -> Result<HttpResponse, Serv
         .await?
         .ok_or(ServiceError::NoData)?;
 
-    let res_contact = match result.get("contact") {
-        Some(bson) => bson,
-        None => {
-            return Err(ServiceError::NoData);
-        }
-    };
+    let res_contact = result.get("contact").ok_or(ServiceError::NoData)?;
 
-    let uc: UserContact = match bson::from_bson(res_contact.clone()) {
-        Ok(uc) => uc,
-        Err(_) => {
-            return Err(ServiceError::InternalServerError);
-        }
-    };
+    let uc: UserContact = bson::from_bson(res_contact.clone())
+        .map_err(|_| ServiceError::InternalServerError)?;
 
     Ok(HttpResponse::Ok().json(User {
         id: user_id,
