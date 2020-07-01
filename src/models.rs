@@ -29,14 +29,19 @@ pub struct User {
     pub id: uuid::Uuid,
     pub contact: UserContact,
 }
+impl User {
+    pub fn new(contact: UserContact) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4(),
+            contact,
+        }
+    }
+}
 
 #[derive(Deserialize)]
 pub struct UserRequest {
     pub id: uuid::Uuid,
 }
-
-#[derive(Serialize, Deserialize)]
-pub struct Hackstead {}
 
 #[cfg(test)]
 mod test {

@@ -1,16 +1,16 @@
 use crate::data::get_mongo_database;
 use crate::models::{User, UserContact, UserRequest};
-use actix_web::{get, web, HttpRequest, HttpResponse};
-use bson::{doc, Bson};
-use fll_scoring::errors::ServiceError;
+use actix_web::{get, web, HttpResponse};
+use bson::doc;
+use hcor::errors::ServiceError;
 
 #[get("/user/")]
 pub async fn get_user(form: web::Form<UserRequest>) -> Result<HttpResponse, ServiceError> {
     let user_id = form.id;
     let db = get_mongo_database("hackagotchi").await?;
-    let collection = db.collection("users");
+    let users = db.collection("users");
     let filter = doc! {"id": user_id.to_string()};
-    let result = collection
+    let result = users
         .find_one(filter, None)
         .await?
         .ok_or(ServiceError::NoData)?;

@@ -1,5 +1,4 @@
-use bson::doc;
-use mongodb::{options::ClientOptions, Client, Collection, Database};
+use mongodb::{options::ClientOptions, Client, Database};
 use std::env;
 
 /// Returns a mongo client according to the configured mongo URL
