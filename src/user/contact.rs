@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::clone::Clone;
 
 #[derive(Serialize, Deserialize, Clone)]
 pub enum UserContact {
@@ -22,25 +21,6 @@ impl UserContact {
             _ => return None,
         })
     }
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct User {
-    pub id: uuid::Uuid,
-    pub contact: UserContact,
-}
-impl User {
-    pub fn new(contact: UserContact) -> Self {
-        Self {
-            id: uuid::Uuid::new_v4(),
-            contact,
-        }
-    }
-}
-
-#[derive(Deserialize)]
-pub struct UserRequest {
-    pub id: uuid::Uuid,
 }
 
 #[cfg(test)]
@@ -83,6 +63,7 @@ mod test {
             Some(USER_1),
             "both contact doesn't store slack properly"
         );
+
         assert_eq!(
             both.email(),
             Some(USER_3),
@@ -90,3 +71,4 @@ mod test {
         );
     }
 }
+
