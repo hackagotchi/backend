@@ -1,5 +1,5 @@
 use super::get_hackstead;
-use hcor::errors::ServiceError;
+use hcor::ServiceError;
 
 #[actix_rt::test]
 async fn test_get_hackstead() -> Result<(), ServiceError> {

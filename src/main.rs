@@ -1,5 +1,5 @@
 use actix_web::{App, HttpServer};
-use hcor::errors::RequestError;
+use hcor::RequestError;
 
 pub mod data;
 pub mod hackstead;

@@ -1,7 +1,5 @@
 use actix_web::{get, web, HttpResponse};
-use bson::doc;
-use hcor::errors::ServiceError;
-use hcor::{Hackstead, UserContact};
+use hcor::{ServiceError, Hackstead, UserContact};
 
 #[get("/hackstead/")]
 pub async fn get_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse, ServiceError> {
@@ -12,7 +10,7 @@ pub async fn get_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse,
 
     let res = crate::data::hacksteads()
         .await?
-        .find_one(doc! { "id": slack_id }, None)
+        .find_one(bson::doc! { "id": slack_id }, None)
         .await?
         .ok_or(ServiceError::NoData)?;
     log::debug!("hackstead bson: {}", res);
