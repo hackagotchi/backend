@@ -56,10 +56,17 @@ async fn test_get_hackstead() -> Result<(), ServiceError> {
         .send()
         .await
         .expect("no send request");
+
     assert!(
         res.status().is_success(),
         "/hackstead/ Response status: {}",
         res.status()
+    );
+
+    let returned_bobstead: Hackstead = res.json().await.expect("bad json");
+    assert_eq!(
+        bobstead, returned_bobstead,
+        "the backend returned the hackstead different than when it went in!"
     );
 
     Ok(())
