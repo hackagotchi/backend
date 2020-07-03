@@ -1,15 +1,13 @@
-use hcor::{Hackstead, UserContact};
 use actix_web::{get, web, HttpResponse};
 use bson::doc;
 use hcor::errors::ServiceError;
+use hcor::{Hackstead, UserContact};
 
 #[get("/hackstead/")]
 pub async fn get_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse, ServiceError> {
     log::debug!("servicing get_hackstead request");
 
-    let slack_id = form
-        .slack()
-        .ok_or(ServiceError::bad_request("no slack"))?;
+    let slack_id = form.slack().ok_or(ServiceError::bad_request("no slack"))?;
     log::debug!("looking for {}", slack_id);
 
     let res = crate::data::hacksteads()
@@ -19,8 +17,8 @@ pub async fn get_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse,
         .ok_or(ServiceError::NoData)?;
     log::debug!("hackstead bson: {}", res);
 
-    let stead: Hackstead = bson::from_bson(res.into())
-        .map_err(|_| ServiceError::InternalServerError)?;
+    let stead: Hackstead =
+        bson::from_bson(res.into()).map_err(|_| ServiceError::InternalServerError)?;
 
     log::debug!("hackstead: {:?}", stead);
 
@@ -29,9 +27,9 @@ pub async fn get_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse,
 
 #[actix_rt::test]
 async fn test_get_hackstead() -> Result<(), ServiceError> {
-    use hcor::{Hackstead, UserContact};
     use crate::{data, to_doc};
     use actix_web::{App, HttpServer};
+    use hcor::{Hackstead, UserContact};
 
     pretty_env_logger::init();
 
@@ -47,7 +45,7 @@ async fn test_get_hackstead() -> Result<(), ServiceError> {
         HttpServer::new(move || App::new().service(get_hackstead))
             .bind("127.0.0.1:8000")
             .expect("couldn't bind port 8000")
-            .run()
+            .run(),
     );
 
     let client = reqwest::Client::new();
@@ -58,7 +56,11 @@ async fn test_get_hackstead() -> Result<(), ServiceError> {
         .send()
         .await
         .expect("no send request");
-    assert!(res.status().is_success(), "/hackstead/ Response status: {}", res.status());
+    assert!(
+        res.status().is_success(),
+        "/hackstead/ Response status: {}",
+        res.status()
+    );
 
     Ok(())
 }
