@@ -6,6 +6,10 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[[bin]]
+path = "./src/from_csv.rs"
+name = "from_csv"
+
 [dependencies]
 actix-web = "2.0"
 actix-rt = "1.0"

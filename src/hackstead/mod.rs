@@ -1,5 +1,5 @@
 use actix_web::{get, web, HttpResponse};
-use hcor::{ServiceError, Hackstead, UserContact};
+use hcor::{Hackstead, ServiceError, UserContact};
 
 #[get("/hackstead/")]
 pub async fn get_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse, ServiceError> {
