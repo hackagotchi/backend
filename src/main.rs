@@ -13,10 +13,3 @@ async fn main() -> std::io::Result<()> {
         .run()
         .await
 }
-
-fn to_doc<S: serde::Serialize>(s: &S) -> Result<bson::Document, RequestError> {
-    match bson::to_bson(s)? {
-        bson::Bson::Document(d) => Ok(d),
-        not_doc => Err(RequestError::NotDocument(not_doc)),
-    }
-}
