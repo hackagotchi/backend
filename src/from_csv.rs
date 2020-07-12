@@ -1,13 +1,13 @@
 //! Dumps a CSV file of the old dynamodb format into the mongodb.
 //! input CSVs are assumed to be generated with this tool: https://pypi.org/project/export-dynamodb/
 use hcor::item;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 mod data;
 
-/* To make the errors bearable. 
+/* To make the errors bearable.
  * This may need to be updated.
- 
+
 0  | cat,
 1  | id,
 2  | name,
@@ -50,7 +50,7 @@ struct Row {
     // market
     price: Option<u32>,
     market_name: Option<String>,
-    // item 
+    // item
     ownership_log: Option<String>,
     acquired: Option<String>,
 }
@@ -106,16 +106,15 @@ fn as_json<D: serde::de::DeserializeOwned>(s: &str) -> Result<D, String> {
         .replace("'", "\"")
         .replace("False", "false");
 
-    serde_json::from_str(&fixed)
-        .map_err(|e| format!("{} is bad json: {}", fixed, e))
+    serde_json::from_str(&fixed).map_err(|e| format!("{} is bad json: {}", fixed, e))
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use std::collections::HashMap;
     use chrono::NaiveDateTime;
-    use hcor::Hackstead;
     use futures::StreamExt;
+    use hcor::Hackstead;
+    use std::collections::HashMap;
 
     pretty_env_logger::init();
 
@@ -147,10 +146,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 );
                 hs.profile.joined = NaiveDateTime::parse_from_str(&joined, "%Y-%m-%dT%H:%M:%S%.fZ")
                     .unwrap_or_else(|e| panic!("couldn't parse joined {}: {}", joined, e));
-                hs.profile.last_active = NaiveDateTime::parse_from_str(&last_active, "%Y-%m-%dT%H:%M:%S%.fZ")
-                    .unwrap_or_else(|e| panic!("couldn't parse last_active {}: {}", last_active, e));
-                hs.profile.last_farm = NaiveDateTime::parse_from_str(&last_farm, "%Y-%m-%dT%H:%M:%S%.fZ")
-                    .unwrap_or_else(|e| panic!("couldn't parse last_farm {}: {}", last_farm, e));
+                hs.profile.last_active =
+                    NaiveDateTime::parse_from_str(&last_active, "%Y-%m-%dT%H:%M:%S%.fZ")
+                        .unwrap_or_else(|e| {
+                            panic!("couldn't parse last_active {}: {}", last_active, e)
+                        });
+                hs.profile.last_farm =
+                    NaiveDateTime::parse_from_str(&last_farm, "%Y-%m-%dT%H:%M:%S%.fZ")
+                        .unwrap_or_else(|e| {
+                            panic!("couldn't parse last_farm {}: {}", last_farm, e)
+                        });
                 hs.profile.xp = r.xp.expect("profile no xp");
                 *found_profile = true;
             }
@@ -161,37 +166,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         Some(item::Gotchi {
                             archetype_handle,
                             nickname,
-                            harvest_log: as_json(&hl)
-                                .unwrap_or_else(|e| {
-                                    log::error!("error parsing harvest log: {}", e);
-                                    Default::default()
-                                }),
+                            harvest_log: as_json(&hl).unwrap_or_else(|e| {
+                                log::error!("error parsing harvest log: {}", e);
+                                Default::default()
+                            }),
                         })
                     } else {
                         None
                     },
-                    seed: r
-                        .pedigree
-                        .as_ref()
-                        .map(|p| item::Seed {
-                            pedigree: as_json(p)
-                                .unwrap_or_else(|e| {
-                                    log::error!("error parsing seed pedigree: {}", e);
-                                    Default::default()
-                                }),
-                            archetype_handle
+                    seed: r.pedigree.as_ref().map(|p| item::Seed {
+                        pedigree: as_json(p).unwrap_or_else(|e| {
+                            log::error!("error parsing seed pedigree: {}", e);
+                            Default::default()
                         }),
+                        archetype_handle,
+                    }),
                     id: uuid::Uuid::parse_str(&r.id).expect("item id not uuid"),
                     archetype_handle,
                     steader: r.steader.clone(),
-                    ownership_log: as_json::<Vec<OldOwner>>(&r.ownership_log.expect("item no ownership_log"))
-                        .unwrap_or_else(|e| {
-                            log::error!("error parsing ownership log: {}", e);
-                            Default::default()
-                        })
-                        .into_iter()
-                        .map(|x| x.into())
-                        .collect(),
+                    ownership_log: as_json::<Vec<OldOwner>>(
+                        &r.ownership_log.expect("item no ownership_log"),
+                    )
+                    .unwrap_or_else(|e| {
+                        log::error!("error parsing ownership log: {}", e);
+                        Default::default()
+                    })
+                    .into_iter()
+                    .map(|x| x.into())
+                    .collect(),
                     sale_price: r.price.map(|x| x as i32),
                 })
             }
@@ -200,8 +202,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 hs.land.push(hcor::hackstead::Tile {
                     acquired: NaiveDateTime::parse_from_str(&acquired, "%Y-%m-%dT%H:%M:%S%.fZ")
-                        .unwrap_or_else(|e| panic!("couldn't parse tile acquired {}: {}", acquired, e)),
-                    plant: r.plant.as_ref().map(|p| as_json(p).expect("bad plant json")),
+                        .unwrap_or_else(|e| {
+                            panic!("couldn't parse tile acquired {}: {}", acquired, e)
+                        }),
+                    plant: r
+                        .plant
+                        .as_ref()
+                        .map(|p| as_json(p).expect("bad plant json")),
                     id: uuid::Uuid::parse_str(&r.id).expect("tile id not uuid"),
                     steader: r.steader.clone(),
                 })
@@ -216,11 +223,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         hacksteads
             .into_iter()
             .filter(|(_, (_, found_profile))| *found_profile)
-            .map(|(_, (hs, _))| data::to_doc(&hs).unwrap_or_else(|e| {
-                panic!("couldn't deserialize {:#?}: {}", hs, e);
-            }))
+            .map(|(_, (hs, _))| {
+                data::to_doc(&hs).unwrap_or_else(|e| {
+                    panic!("couldn't deserialize {:#?}: {}", hs, e);
+                })
+            }),
     )
-    .for_each_concurrent(500, |hs| async { hacksteads_db.insert_one(hs, None).await.unwrap(); })
+    .for_each_concurrent(500, |hs| async {
+        hacksteads_db.insert_one(hs, None).await.unwrap();
+    })
     .await;
 
     Ok(())
