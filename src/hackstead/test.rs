@@ -3,7 +3,7 @@ use hcor::ServiceError;
 
 #[actix_rt::test]
 async fn test_get_hackstead() -> Result<(), ServiceError> {
-    use crate::{data, to_doc};
+    use crate::{data, data::to_doc};
     use actix_web::{App, HttpServer};
     use hcor::{Hackstead, UserContact};
 
