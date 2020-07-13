@@ -5,6 +5,8 @@ use actix_web::Result;
 use std::env;
 
 use hmac::{Hmac, Mac, NewMac};
+use sha2::Sha256;
+
 
 
 pub struct VerifySignature;
@@ -22,7 +24,8 @@ impl <S> Middleware<S> for VerifySignature {
 
         let (_, sig) = s.split_at(5);
 
-        let mut mac = Hmac::<Sha256>::new_varkey(String::as_bytes(std::env("SECERT_KEY").unwrap_or("changemepls")));
+        let mut mac = Hmac::<Sha256>::new_varkey(String::as_bytes(env::var("SECERT_KEY").unwrap_or("changemepls")));
+
 
 
         let mut body = String::new();
