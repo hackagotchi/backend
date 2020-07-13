@@ -1,4 +1,3 @@
-use bson::doc;
 use mongodb::{options::ClientOptions, Client, Collection, Database};
 use std::env;
 
@@ -10,12 +9,24 @@ pub async fn get_mongo_client() -> Result<Client, Box<dyn std::error::Error>> {
 }
 
 /// Returns a mongo database from get_mongo_client()
-pub async fn get_mongo_database(
-    database_name: &str,
-) -> Result<Database, Box<dyn std::error::Error>> {
+async fn get_mongo_database(database_name: &str) -> Result<Database, Box<dyn std::error::Error>> {
     let client = get_mongo_client().await?;
 
     Ok(client.database(database_name))
 }
 
+/// Returns the collection of users's hacksteads.
+pub async fn hacksteads() -> Result<Collection, Box<dyn std::error::Error>> {
+    Ok(get_mongo_database("hackagotchi")
+        .await?
+        .collection("hacksteads"))
+}
+
 //TODO: Add get_next_mongo_sequence_number
+
+pub fn to_doc<S: serde::Serialize>(s: &S) -> Result<bson::Document, hcor::RequestError> {
+    match bson::to_bson(s)? {
+        bson::Bson::Document(d) => Ok(d),
+        not_doc => Err(hcor::RequestError::NotDocument(not_doc)),
+    }
+}

@@ -1,21 +1,14 @@
-use actix_web::{get, web, App, HttpRequest, HttpResponse, HttpServer};
+use actix_web::{App, HttpServer};
+use hcor::RequestError;
 
 pub mod data;
-pub mod models;
-pub mod routes;
-
-#[get("/user/{id}")]
-async fn get_user(_req: HttpRequest) -> HttpResponse {
-    /*!
-     * Gets a user from the API
-     */
-
-    HttpResponse::Ok().body("success")
-}
+pub mod hackstead;
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
-    HttpServer::new(move || App::new().service(get_user))
+    pretty_env_logger::init();
+
+    HttpServer::new(move || App::new().service(hackstead::get_hackstead))
         .bind("127.0.0.1:8000")?
         .run()
         .await
