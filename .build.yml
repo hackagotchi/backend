@@ -12,7 +12,7 @@ tasks:
     rustup run nightly cargo fetch
 - nightly: |
     rustup default nightly
-    cd hackagotchi-backend/
+    cd backend/
     cargo build
     cargo test
     cargo fmt -- --check
