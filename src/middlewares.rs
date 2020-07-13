@@ -24,7 +24,11 @@ impl <S> Middleware<S> for VerifySignature {
 
         let (_, sig) = s.split_at(5);
 
-        let mut mac = Hmac::<Sha256>::new_varkey(String::as_bytes(env::var("SECERT_KEY").unwrap_or("changemepls")));
+        let mut mac = Hmac::<Sha256>::new_varkey(
+            env::var("SECERT_KEY")
+                .expect("set SECRET_KEY environment variable")
+                .as_bytes()
+        );
 
 
 
@@ -32,9 +36,9 @@ impl <S> Middleware<S> for VerifySignature {
         req.read_to_string(&mut body)
             .map_err(ServiceError::InternalServerError)?;
 
-        mac.update(String::as_bytes(sig));
+        mac.update(sig.as_bytes());
 
-        mac.verify(String::as_bytes(body));
+        mac.verify(body.as_bytes());
 
     }
 }
