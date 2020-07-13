@@ -16,3 +16,4 @@ uuid = { version = "0.8.1", features = ["v4", "serde"] }
 mongodb = "1.0"
 hmac = "0.8.1" 
 hcor = { git="https://github.com/hackagotchi/hcor" }
+sha2 = "0.9.1"
