@@ -30,8 +30,6 @@ impl <S> Middleware<S> for VerifySignature {
                 .as_bytes()
         );
 
-
-
         let mut body = String::new();
         req.read_to_string(&mut body)
             .map_err(ServiceError::InternalServerError)?;
