@@ -8,8 +8,9 @@ mod test;
 
 #[get("/hackstead/")]
 pub async fn get_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse, ServiceError> {
-    let slack_id = form.slack().ok_or(ServiceError::bad_request("no slack"))?;
+    debug!("servicing get_hackstead request");
 
+    let slack_id = form.slack().ok_or(ServiceError::bad_request("no slack"))?;
     let stead_bson = data::hacksteads()
         .await?
         .find_one(bson::doc! { "id": slack_id }, None)
@@ -26,6 +27,8 @@ pub async fn get_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse,
 
 #[post("/hackstead/new")]
 pub async fn new_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse, ServiceError> {
+    debug!("servicing new_hackstead request");
+
     let slack_id = form.slack().ok_or(ServiceError::bad_request("no slack"))?;
     let hs = Hackstead::new(slack_id);
     data::hacksteads()
@@ -38,8 +41,9 @@ pub async fn new_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse,
 
 #[post("/hackstead/remove")]
 pub async fn remove_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse, ServiceError> {
-    let slack_id = form.slack().ok_or(ServiceError::bad_request("no slack"))?;
+    debug!("servicing new_hackstead request");
 
+    let slack_id = form.slack().ok_or(ServiceError::bad_request("no slack"))?;
     let stead_bson = data::hacksteads()
         .await?
         .find_one_and_delete(bson::doc! { "id": slack_id }, None)
