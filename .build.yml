@@ -1,6 +1,7 @@
 image: archlinux
 packages:
 - rustup
+- mongodb-bin
 repositories: {}
 shell: false
 sources:
@@ -14,5 +15,6 @@ tasks:
     rustup default nightly
     cd backend/
     cargo build
+    sudo systemctl start mongodb
     cargo test
     cargo fmt -- --check
