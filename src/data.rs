@@ -30,3 +30,28 @@ pub fn to_doc<S: serde::Serialize>(s: &S) -> Result<bson::Document, hcor::Reques
         not_doc => Err(hcor::RequestError::NotDocument(not_doc)),
     }
 }
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[tokio::test]
+    async fn simple_mongo() {
+        get_mongo_client()
+            .await
+            .expect("no db");
+    }
+
+    #[tokio::test]
+    async fn hackstead_count() {
+        println!(
+            "hackstead count: {}",
+            hacksteads()
+                .await
+                .expect("no hacksteads")
+                .count_documents(None, None)
+                .await
+                .expect("no hackstead count")
+        );
+    }
+}

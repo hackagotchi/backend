@@ -1,7 +1,7 @@
 use hcor::ServiceError;
 
 #[actix_rt::test]
-async fn test_get_hackstead() -> Result<(), ServiceError> {
+async fn hackstead_routes() -> Result<(), ServiceError> {
     use actix_web::{App, HttpServer};
     use hcor::{Hackstead, UserContact};
 
