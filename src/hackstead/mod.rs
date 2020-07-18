@@ -41,7 +41,7 @@ pub async fn new_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse,
 
 #[post("/hackstead/remove")]
 pub async fn remove_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse, ServiceError> {
-    debug!("servicing new_hackstead request");
+    debug!("servicing remove_hackstead request");
 
     let slack_id = form.slack().ok_or(ServiceError::bad_request("no slack"))?;
     let stead_bson = data::hacksteads()
