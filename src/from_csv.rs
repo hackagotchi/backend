@@ -97,8 +97,8 @@ lazy_static::lazy_static! {
 #[test]
 fn num_unwrapper() {
     assert_eq!(NUM_UNWRAPPER.replace_all("Decimal('0')", "$n"), "0");
-    assert_eq!(NUM_UNWRAPPER.replace_all("Decimal('0.0')", "$n"), "0");
-    assert_eq!(NUM_UNWRAPPER.replace_all("Decimal('-0.0')", "$n"), "0");
+    assert_eq!(NUM_UNWRAPPER.replace_all("Decimal('0.0')", "$n"), "0.0");
+    assert_eq!(NUM_UNWRAPPER.replace_all("Decimal('-0.0')", "$n"), "0.0");
 }
 fn as_json<D: serde::de::DeserializeOwned>(s: &str) -> Result<D, String> {
     let fixed = NUM_UNWRAPPER
