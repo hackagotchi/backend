@@ -1,7 +1,7 @@
 use crate::data;
 use actix_web::{get, post, web, HttpResponse};
-use log::*;
 use hcor::{Hackstead, ServiceError, UserContact};
+use log::*;
 
 #[cfg(test)]
 mod test;
