@@ -1,7 +1,7 @@
 image: archlinux
 packages:
 - rustup
-- mongodb-bin
+- aur/mongodb-bin-4.0
 repositories: {}
 shell: false
 sources:
@@ -16,5 +16,5 @@ tasks:
     cd backend/
     cargo build
     sudo systemctl start mongodb
-    cargo test
+    MONGO_URL=mongodb://localhost:27017 cargo test
     cargo fmt -- --check
