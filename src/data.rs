@@ -37,9 +37,7 @@ mod test {
 
     #[tokio::test]
     async fn simple_mongo() {
-        get_mongo_client()
-            .await
-            .expect("no db");
+        get_mongo_client().await.expect("no db");
     }
 
     #[tokio::test]
