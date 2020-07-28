@@ -1,9 +1,7 @@
-//! Dumps a CSV file of the old dynamodb format into the mongodb.
+//! Dumps a CSV file of the old dynamodb format into the db.
 //! input CSVs are assumed to be generated with this tool: https://pypi.org/project/export-dynamodb/
 use hcor::item;
 use serde::{Deserialize, Serialize};
-
-mod data;
 
 /* To make the errors bearable.
  * This may need to be updated.
@@ -68,8 +66,7 @@ impl Into<item::Acquisition> for OldAcquisition {
     fn into(self) -> item::Acquisition {
         use item::Acquisition::*;
         match self {
-            OldAcquisition::Trade => Trade,
-            OldAcquisition::Purchase { price } => Purchase { price },
+            OldAcquisition::Trade | OldAcquisition::Purchase { .. } => Trade,
             OldAcquisition::Farmed => Farmed,
             OldAcquisition::Crafted => Crafted,
             OldAcquisition::Hatched => Hatched,
@@ -80,14 +77,6 @@ impl Into<item::Acquisition> for OldAcquisition {
 pub struct OldOwner {
     pub id: String,
     pub acquisition: OldAcquisition,
-}
-impl Into<item::Owner> for OldOwner {
-    fn into(self) -> item::Owner {
-        item::Owner {
-            id: self.id,
-            acquisition: self.acquisition.into(),
-        }
-    }
 }
 
 lazy_static::lazy_static! {
@@ -111,15 +100,22 @@ fn as_json<D: serde::de::DeserializeOwned>(s: &str) -> Result<D, String> {
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    use chrono::NaiveDateTime;
-    use futures::StreamExt;
+    use chrono::{DateTime, Utc};
     use hcor::Hackstead;
     use std::collections::HashMap;
 
     pretty_env_logger::init();
 
-    let mut rdr = csv::ReaderBuilder::new().from_path("hackagotchi.csv")?;
+    let mut rdr = csv::ReaderBuilder::new()
+        .from_path("hackagotchi.csv")
+        .map_err(|e| format!("invalid csv: {}", e))?;
     let mut hacksteads: HashMap<String, (Hackstead, bool)> = HashMap::new();
+
+    fn parse_date_time(dt: String) -> DateTime<Utc> {
+        DateTime::parse_from_str(&format!("{} +0000", dt), "%Y-%m-%dT%H:%M:%S%.fZ %z")
+            .unwrap_or_else(|e| panic!("couldn't parse dt {}: {}", dt, e))
+            .into()
+    }
 
     for raw_row in rdr.deserialize::<Row>() {
         let r = match raw_row {
@@ -135,7 +131,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
         let (hs, found_profile) = hacksteads
             .entry(r.steader.clone())
-            .or_insert((Hackstead::new(r.steader.clone()), false));
+            .or_insert((Hackstead::empty(Some(&r.steader)), false));
 
         match r.cat {
             0 => {
@@ -144,95 +140,134 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     r.last_active.expect("profile no last_active"),
                     r.last_farm.expect("profile no last_farm"),
                 );
-                hs.profile.joined = NaiveDateTime::parse_from_str(&joined, "%Y-%m-%dT%H:%M:%S%.fZ")
-                    .unwrap_or_else(|e| panic!("couldn't parse joined {}: {}", joined, e));
-                hs.profile.last_active =
-                    NaiveDateTime::parse_from_str(&last_active, "%Y-%m-%dT%H:%M:%S%.fZ")
-                        .unwrap_or_else(|e| {
-                            panic!("couldn't parse last_active {}: {}", last_active, e)
-                        });
-                hs.profile.last_farm =
-                    NaiveDateTime::parse_from_str(&last_farm, "%Y-%m-%dT%H:%M:%S%.fZ")
-                        .unwrap_or_else(|e| {
-                            panic!("couldn't parse last_farm {}: {}", last_farm, e)
-                        });
-                hs.profile.xp = r.xp.expect("profile no xp");
+                hs.profile.joined = parse_date_time(joined);
+                hs.profile.last_active = parse_date_time(last_active);
+                hs.profile.last_farm = parse_date_time(last_farm);
+                hs.profile.xp = r.xp.expect("profile no xp") as i32;
                 *found_profile = true;
             }
             1 | 2 => {
                 let archetype_handle = r.archetype_handle.expect("item no archetype");
+                let item_id = uuid::Uuid::parse_str(&r.id).expect("item id not uuid");
                 hs.inventory.push(item::Item {
-                    gotchi: if let (Some(nickname), Some(hl)) = (r.nickname, r.harvest_log) {
-                        Some(item::Gotchi {
-                            archetype_handle,
-                            nickname,
-                            harvest_log: as_json(&hl).unwrap_or_else(|e| {
-                                log::error!("error parsing harvest log: {}", e);
-                                Default::default()
-                            }),
-                        })
+                    base: item::ItemBase {
+                        item_id,
+                        owner_id: hs.profile.steader_id,
+                        archetype_handle: archetype_handle as i32,
+                    },
+                    gotchi: if let (Some(nickname), Some(_)) = (r.nickname, r.harvest_log) {
+                        Some(item::Gotchi { nickname, item_id })
                     } else {
                         None
                     },
-                    seed: r.pedigree.as_ref().map(|p| item::Seed {
-                        pedigree: as_json(p).unwrap_or_else(|e| {
-                            log::error!("error parsing seed pedigree: {}", e);
-                            Default::default()
-                        }),
-                        archetype_handle,
-                    }),
-                    id: uuid::Uuid::parse_str(&r.id).expect("item id not uuid"),
-                    archetype_handle,
-                    steader: r.steader.clone(),
-                    ownership_log: as_json::<Vec<OldOwner>>(
-                        &r.ownership_log.expect("item no ownership_log"),
-                    )
-                    .unwrap_or_else(|e| {
-                        log::error!("error parsing ownership log: {}", e);
-                        Default::default()
-                    })
-                    .into_iter()
-                    .map(|x| x.into())
-                    .collect(),
-                    sale_price: r.price.map(|x| x as i32),
+                    ownership_log: vec![item::LoggedOwner {
+                        logged_owner_id: hs.profile.steader_id,
+                        item_id,
+                        acquisition: item::Acquisition::Trade,
+                        owner_index: 0,
+                    }],
                 })
             }
             3 => {
+                use hcor::hackstead::plant::{Craft, Effect, PlantBase};
+
+                #[derive(serde::Serialize, serde::Deserialize)]
+                struct OldPlant {
+                    pub xp: i32,
+                    pub until_yield: f64,
+                    pub craft: Option<OldCraft>,
+                    #[serde(default)]
+                    pub effects: Vec<OldEffect>,
+                    pub archetype_handle: i32,
+                    #[serde(default)]
+                    pub queued_xp_bonus: i32,
+                }
+                #[derive(serde::Serialize, serde::Deserialize)]
+                pub struct OldCraft {
+                    pub until_finish: f64,
+                    #[serde(alias = "makes")]
+                    pub recipe_archetype_handle: i32,
+                }
+                #[derive(serde::Serialize, serde::Deserialize)]
+                pub struct OldEffect {
+                    pub until_finish: Option<f64>,
+                    pub item_archetype_handle: i32,
+                    pub effect_archetype_handle: i32,
+                }
+                impl std::ops::Deref for OldPlant {
+                    type Target = hcor::config::PlantArchetype;
+
+                    fn deref(&self) -> &Self::Target {
+                        &hcor::config::CONFIG
+                            .plant_archetypes
+                            .get(self.archetype_handle as usize)
+                            .expect("invalid archetype handle")
+                    }
+                }
+
                 let acquired = r.acquired.expect("tiles need acquired dates");
+                let tile_id = uuid::Uuid::parse_str(&r.id).expect("tile id not uuid");
+                let p: Option<OldPlant> = r
+                    .plant
+                    .as_ref()
+                    .map(|p| as_json(p).expect("bad plant json"));
 
                 hs.land.push(hcor::hackstead::Tile {
-                    acquired: NaiveDateTime::parse_from_str(&acquired, "%Y-%m-%dT%H:%M:%S%.fZ")
-                        .unwrap_or_else(|e| {
-                            panic!("couldn't parse tile acquired {}: {}", acquired, e)
+                    base: hcor::hackstead::TileBase {
+                        acquired: parse_date_time(acquired),
+                        tile_id,
+                        owner_id: hs.profile.steader_id,
+                    },
+                    plant: p.map(|p| hcor::hackstead::Plant {
+                        base: PlantBase {
+                            xp: p.xp,
+                            until_yield: p.until_yield,
+                            archetype_handle: p.archetype_handle,
+                            nickname: p.name.clone(),
+                            tile_id,
+                        },
+                        effects: p
+                            .effects
+                            .into_iter()
+                            .map(|e| Effect {
+                                tile_id,
+                                until_finish: e.until_finish,
+                                effect_archetype_handle: e.effect_archetype_handle,
+                                item_archetype_handle: e.item_archetype_handle,
+                            })
+                            .collect(),
+                        craft: p.craft.map(|c| Craft {
+                            recipe_archetype_handle: c.recipe_archetype_handle,
+                            until_finish: c.until_finish,
+                            tile_id,
                         }),
-                    plant: r
-                        .plant
-                        .as_ref()
-                        .map(|p| as_json(p).expect("bad plant json")),
-                    id: uuid::Uuid::parse_str(&r.id).expect("tile id not uuid"),
-                    steader: r.steader.clone(),
+                        queued_xp_bonus: 0,
+                    }),
                 })
             }
             other => panic!("unknown category: {}", other),
         }
     }
 
-    // technically a colllection but whatever
-    let hacksteads_db = data::hacksteads().await?;
-    futures::stream::iter(
-        hacksteads
-            .into_iter()
-            .filter(|(_, (_, found_profile))| *found_profile)
-            .map(|(_, (hs, _))| {
-                data::to_doc(&hs).unwrap_or_else(|e| {
-                    panic!("couldn't deserialize {:#?}: {}", hs, e);
-                })
-            }),
-    )
-    .for_each_concurrent(500, |hs| async {
-        hacksteads_db.insert_one(hs, None).await.unwrap();
-    })
-    .await;
+    let pool = backend::db_pool().await.unwrap();
+    let len = hacksteads.len();
+    let mut tx = pool.begin().await?;
+    for (i, (id, (hs, profile))) in hacksteads.into_iter().enumerate() {
+        if profile {
+            println!(
+                "[inserting hackstead {} of {} ({}% complete)]",
+                i,
+                len,
+                (i as f32 / len as f32) * 100.0
+            );
+            backend::db_insert_hackstead(&mut tx, hs)
+                .await
+                .unwrap_or_else(|e| panic!("rolling back migration: {}", e));
+        } else {
+            println!("ignoring {}", id);
+        }
+    }
+    tx.commit().await?;
 
     Ok(())
 }

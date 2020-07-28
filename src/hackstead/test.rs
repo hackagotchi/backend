@@ -1,9 +1,9 @@
-use hcor::ServiceError;
+use crate::ServiceError;
 
 #[actix_rt::test]
 async fn test_get_hackstead() -> Result<(), ServiceError> {
     use actix_web::{App, HttpServer};
-    use hcor::{Hackstead, UserContact};
+    use hcor::{Hackstead, UserId};
 
     pretty_env_logger::init();
 
@@ -21,7 +21,7 @@ async fn test_get_hackstead() -> Result<(), ServiceError> {
 
     // create bob's stead!
     const BOB_ID: &'static str = "U14MB0B";
-    let bob_contact = UserContact::Slack(BOB_ID.to_string());
+    let bob_contact = UserId::Slack(BOB_ID.to_string());
     {
         let res = reqwest::Client::new()
             .post("http://127.0.0.1:8000/hackstead/new")
@@ -64,7 +64,7 @@ async fn test_get_hackstead() -> Result<(), ServiceError> {
             "/hackstead/ Response status: {}",
             res.status()
         );
-        res.json().await.expect("bad json")
+        res.json().await.expect("bad get hackstead json")
     };
 
     // now kill bob
@@ -75,7 +75,7 @@ async fn test_get_hackstead() -> Result<(), ServiceError> {
             "/hackstead/remove Response status: {}",
             res.status()
         );
-        let returned_bobstead: Hackstead = res.json().await.expect("bad json");
+        let returned_bobstead: Hackstead = res.json().await.expect("bad kill hackstead json");
         assert_eq!(
             bobstead, returned_bobstead,
             "the hackstead returned from /hackstead/remove is different than the one from /hackstead/!"
