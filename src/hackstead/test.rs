@@ -1,11 +1,14 @@
 use crate::ServiceError;
+const PORT: usize = 8000;
 
 #[actix_rt::test]
 async fn test_get_hackstead() -> Result<(), ServiceError> {
     use actix_web::{App, HttpServer};
     use hcor::{Hackstead, UserId};
 
-    pretty_env_logger::init();
+    // attempt to establish logging, do nothing if it fails
+    // (it probably fails because it's already been established in another test)
+    drop(pretty_env_logger::try_init());
 
     tokio::spawn(
         HttpServer::new(move || {
@@ -14,18 +17,18 @@ async fn test_get_hackstead() -> Result<(), ServiceError> {
                 .service(super::get_hackstead)
                 .service(super::remove_hackstead)
         })
-        .bind("127.0.0.1:8000")
-        .expect("couldn't bind port 8000")
+        .bind(&format!("127.0.0.1:{}", PORT))
+        .expect(&format!("couldn't bind port {}", PORT))
         .run(),
     );
 
     // create bob's stead!
-    const BOB_ID: &'static str = "U14MB0B";
-    let bob_contact = UserId::Slack(BOB_ID.to_string());
-    {
+    let bob_steader_id = {
         let res = reqwest::Client::new()
-            .post("http://127.0.0.1:8000/hackstead/new")
-            .json(&bob_contact)
+            .post(&format!("http://127.0.0.1:{}/hackstead/new", PORT))
+            .json(&hcor::hackstead::NewHacksteadRequest {
+                slack_id: None,
+            })
             .send()
             .await
             .expect("no send request");
@@ -35,20 +38,28 @@ async fn test_get_hackstead() -> Result<(), ServiceError> {
             "/hackstead/new Response status: {}",
             res.status()
         );
-    }
+
+        res
+            .json::<Hackstead>()
+            .await
+            .expect("new hackstead bad json")
+            .profile
+            .steader_id
+    };
+    let bob_id = UserId::Uuid(bob_steader_id);
 
     let get_bob = || async {
         reqwest::Client::new()
-            .get("http://127.0.0.1:8000/hackstead/")
-            .json(&bob_contact)
+            .get(&format!("http://127.0.0.1:{}/hackstead/", PORT))
+            .json(&bob_id)
             .send()
             .await
             .expect("no send request")
     };
     let kill_bob = || async {
         reqwest::Client::new()
-            .post("http://127.0.0.1:8000/hackstead/remove")
-            .json(&bob_contact)
+            .post(&format!("http://127.0.0.1:{}/hackstead/remove", PORT))
+            .json(&bob_id)
             .send()
             .await
             .expect("no send request")
@@ -56,7 +67,7 @@ async fn test_get_hackstead() -> Result<(), ServiceError> {
 
     // fetch bob
     let bobstead: Hackstead = {
-        log::info!("requesting {:?}", bob_contact);
+        log::info!("requesting {:?}", bob_id);
         let res = get_bob().await;
 
         assert!(

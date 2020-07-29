@@ -19,16 +19,21 @@ pub async fn db_conn() -> Result<sqlx::PgConnection, ServiceError> {
     })
 }
 
+const MIN_DB_CONNECTIONS: u32 = 3;
+const MAX_DB_CONNECTIONS: u32 = 3;
 pub async fn db_pool() -> Result<sqlx::PgPool, ServiceError> {
-    sqlx::PgPool::new(&std::env::var("DATABASE_URL").map_err(|_| {
-        log::error!("no DATABASE_URL environment variable set");
-        ServiceError::InternalServerError
-    })?)
-    .await
-    .map_err(|e| {
-        log::error!("couldn't make db pool: {}", e);
-        ServiceError::InternalServerError
-    })
+    sqlx::PgPool::builder()
+        .min_size(MIN_DB_CONNECTIONS)
+        .max_size(MAX_DB_CONNECTIONS)
+        .build(&std::env::var("DATABASE_URL").map_err(|_| {
+            log::error!("no DATABASE_URL environment variable set");
+            ServiceError::InternalServerError
+        })?)
+        .await
+        .map_err(|e| {
+            log::error!("couldn't make db pool: {}", e);
+            ServiceError::InternalServerError
+        })
 }
 
 #[derive(Debug, Display)]

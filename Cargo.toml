@@ -57,4 +57,3 @@ default_features = false
 #git = "https://github.com/hackagotchi/hcor.git"
 #branch = "slim"
 path = "../hcor"
-features = [ "actix"  ]
