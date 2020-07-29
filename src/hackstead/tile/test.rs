@@ -60,9 +60,7 @@ async fn test_new_tile() -> Result<(), crate::ServiceError> {
             res.status()
         );
 
-        res.json::<Hackstead>()
-            .await
-            .expect("bad new stead json")
+        res.json::<Hackstead>().await.expect("bad new stead json")
     };
     let starting_tile_count = new_bobstead.land.len();
     let bob_steader_id = new_bobstead.profile.steader_id;
@@ -108,46 +106,64 @@ async fn test_new_tile() -> Result<(), crate::ServiceError> {
             .inventory
             .into_iter()
             .find(|i| i.name == arch.name)
-            .unwrap_or_else(|| panic!(
-                "item/spawn didn't put {} in bob's inventory",
-                arch.name
-            ))
+            .unwrap_or_else(|| panic!("item/spawn didn't put {} in bob's inventory", arch.name))
             .base
             .item_id
     };
 
-    let new_tile_bob = |item| async move {
-        reqwest::Client::new()
+    struct NewTileAssumptions {
+        expected_success: bool,
+        item_consumed: bool,
+        expected_extra_tiles: usize,
+    }
+
+    let new_tile_bob_assuming = |item_id, assumptions: NewTileAssumptions| async move {
+        let res = reqwest::Client::new()
             .post(&format!("http://127.0.0.1:{}/tile/new", PORT))
             .json(&hcor::hackstead::TileCreationRequest {
-                tile_consumable_item_id: item,
+                tile_consumable_item_id: item_id,
                 steader: UserId::Uuid(bob_steader_id),
             })
             .send()
             .await
-            .expect("bad send tile/new request")
-    };
+            .expect("bad send tile/new request");
 
-    let new_tile_bob_and_check = |item_id, expected_extra| async move {
-        let res = new_tile_bob(item_id).await;
-        assert!(
-            res.status().is_success(),
-            "/tile/new Response Status (expected success): {}\n{:#?}",
-            res.status(),
-            res.text().await
-        );
+        if assumptions.expected_success {
+            assert!(
+                res.status().is_success(),
+                "/tile/new Response Status (expected success): {}\n{:#?}",
+                res.status(),
+                res.text().await
+            );
+        } else {
+            assert!(
+                res.status().is_client_error(),
+                "/tile/new Response Status (expected client error): {}\n{:#?}",
+                res.status(),
+                res.text().await
+            );
+        }
 
         let bobstead = get_bob().await;
 
         assert_eq!(
             bobstead.land.len(),
-            (starting_tile_count + expected_extra),
-            "bob didn't get that extra tile?",
+            (starting_tile_count + assumptions.expected_extra_tiles),
+            "bob doesn't have the expected number of extra tiles",
         );
 
-        assert!(
-            !bobstead.inventory.into_iter().any(|i| i.base.item_id == item_id),
-            "bob still has his land giving item?",
+        assert_eq!(
+            assumptions.item_consumed,
+            !bobstead
+                .inventory
+                .into_iter()
+                .any(|i| i.base.item_id == item_id),
+            "bob's land redeemable item was unexpectedly {}",
+            if assumptions.item_consumed {
+                "not consumed"
+            } else {
+                "consumed"
+            }
         );
     };
 
@@ -155,21 +171,29 @@ async fn test_new_tile() -> Result<(), crate::ServiceError> {
     let requires_xp_item_id = spawn_bob(requires_xp_arch).await;
 
     // try and redeem this item bob doesn't have enough xp to redeem for land
-    {
-        let res = new_tile_bob(requires_xp_item_id).await;
-        assert!(
-            res.status().is_client_error(),
-            "/tile/new Response Status (expected client error): {}\n{:#?}",
-            res.status(),
-            res.text().await
-        );
-    }
+    new_tile_bob_assuming(
+        requires_xp_item_id,
+        NewTileAssumptions {
+            expected_success: false,
+            item_consumed: false,
+            expected_extra_tiles: 0,
+        },
+    )
+    .await;
 
     // spawn an item bob can redeem for land without having enough xp
     let no_requires_xp_item_id = spawn_bob(no_requires_xp_arch).await;
 
     // try and redeem that item, this should actually work
-    new_tile_bob_and_check(no_requires_xp_item_id, 1).await;
+    new_tile_bob_assuming(
+        no_requires_xp_item_id,
+        NewTileAssumptions {
+            expected_success: true,
+            item_consumed: true,
+            expected_extra_tiles: 1,
+        },
+    )
+    .await;
 
     // give bob enough xp to unlock the next level (hopefully)
     sqlx::query!(
@@ -181,7 +205,35 @@ async fn test_new_tile() -> Result<(), crate::ServiceError> {
     .await?;
 
     // try and redeem the first item that does require xp to work, should work now.
-    new_tile_bob_and_check(requires_xp_item_id, 2).await;
+    new_tile_bob_assuming(
+        requires_xp_item_id,
+        NewTileAssumptions {
+            expected_success: true,
+            item_consumed: true,
+            expected_extra_tiles: 2,
+        },
+    )
+    .await;
+
+    // try and redeem those items we've already used up
+    new_tile_bob_assuming(
+        requires_xp_item_id,
+        NewTileAssumptions {
+            expected_success: false,
+            item_consumed: true,
+            expected_extra_tiles: 2,
+        },
+    )
+    .await;
+    new_tile_bob_assuming(
+        no_requires_xp_item_id,
+        NewTileAssumptions {
+            expected_success: false,
+            item_consumed: true,
+            expected_extra_tiles: 2,
+        },
+    )
+    .await;
 
     // kill bob so he's not left in the database
     reqwest::Client::new()

@@ -26,9 +26,7 @@ async fn test_get_hackstead() -> Result<(), ServiceError> {
     let bob_steader_id = {
         let res = reqwest::Client::new()
             .post(&format!("http://127.0.0.1:{}/hackstead/new", PORT))
-            .json(&hcor::hackstead::NewHacksteadRequest {
-                slack_id: None,
-            })
+            .json(&hcor::hackstead::NewHacksteadRequest { slack_id: None })
             .send()
             .await
             .expect("no send request");
@@ -39,8 +37,7 @@ async fn test_get_hackstead() -> Result<(), ServiceError> {
             res.status()
         );
 
-        res
-            .json::<Hackstead>()
+        res.json::<Hackstead>()
             .await
             .expect("new hackstead bad json")
             .profile
