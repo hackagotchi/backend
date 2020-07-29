@@ -108,6 +108,7 @@ pub async fn db_get_hackstead(pool: &PgPool, id: &UserId) -> sqlx::Result<hackst
 }
 
 #[get("/hackstead/")]
+/// Returns a user's hackstead, complete with Profile, Inventory, and Tiles.
 pub async fn get_hackstead(
     db: web::Data<PgPool>,
     user: web::Json<UserId>,

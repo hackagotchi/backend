@@ -9,6 +9,9 @@ use log::*;
 use sqlx::{Executor, PgPool, Postgres};
 use uuid::Uuid;
 
+#[cfg(test)]
+mod test;
+
 pub async fn db_get_inventory(pool: &PgPool, steader_id: Uuid) -> sqlx::Result<Vec<Item>> {
     stream::iter(
         sqlx::query_as!(
@@ -167,6 +170,8 @@ pub async fn transfer_items(
     debug!("servicing transfer_items request");
 
     let mut tx = db.begin().await?;
+    let receiver_id = super::uuid_or_lookup(&db, &req.receiver_id).await?;
+    let sender_id = super::uuid_or_lookup(&db, &req.sender_id).await?;
     for &item_id in &req.item_ids {
         let current_owner = db_get_ownership_logs(&db, item_id)
             .await?
@@ -177,11 +182,11 @@ pub async fn transfer_items(
                 ServiceError::InternalServerError
             })?;
 
-        if current_owner.logged_owner_id != req.sender_id {
+        if current_owner.logged_owner_id != sender_id {
             return Err(ServiceError::bad_request(format!(
                 "can't transfer item {} from user {} to user {}; \
                     it doesn't belong to sender.",
-                item_id, req.sender_id, req.receiver_id
+                item_id, sender_id, receiver_id
             )));
         }
 
@@ -189,7 +194,7 @@ pub async fn transfer_items(
             &mut tx,
             item::LoggedOwner {
                 item_id,
-                logged_owner_id: req.receiver_id,
+                logged_owner_id: receiver_id,
                 acquisition: item::Acquisition::Trade,
                 owner_index: current_owner.owner_index + 1,
             },
@@ -200,9 +205,9 @@ pub async fn transfer_items(
             "UPDATE items \
                 SET owner_id = $1 \
                 WHERE item_id = $2 AND owner_id = $3",
-            req.receiver_id,
+            receiver_id,
             item_id,
-            req.sender_id,
+            sender_id,
         )
         .execute(&mut tx)
         .await?;
