@@ -1,4 +1,4 @@
-use crate::{db_pool, ServiceError};
+use crate::ServiceError;
 use actix_web::{get, post, web, HttpResponse};
 use hcor::{
     hackstead::{self, NewHacksteadRequest},
@@ -6,6 +6,9 @@ use hcor::{
 };
 use log::*;
 pub use sqlx::{Executor, PgPool, Postgres};
+
+pub use item::{spawn_items, transfer_items};
+pub use tile::new_tile;
 
 mod item;
 #[cfg(test)]
@@ -105,10 +108,13 @@ pub async fn db_get_hackstead(pool: &PgPool, id: &UserId) -> sqlx::Result<hackst
 }
 
 #[get("/hackstead/")]
-pub async fn get_hackstead(user: web::Json<UserId>) -> Result<HttpResponse, ServiceError> {
+pub async fn get_hackstead(
+    db: web::Data<PgPool>,
+    user: web::Json<UserId>,
+) -> Result<HttpResponse, ServiceError> {
     debug!("servicing get_hackstead request");
 
-    let stead: Hackstead = db_get_hackstead(&db_pool().await?, &*user).await?;
+    let stead: Hackstead = db_get_hackstead(&db, &*user).await?;
     trace!("got hackstead: {:#?}", stead);
 
     Ok(HttpResponse::Ok().json(stead))
@@ -116,31 +122,34 @@ pub async fn get_hackstead(user: web::Json<UserId>) -> Result<HttpResponse, Serv
 
 #[post("/hackstead/new")]
 pub async fn new_hackstead(
+    db: web::Data<PgPool>,
     user: web::Json<NewHacksteadRequest>,
 ) -> Result<HttpResponse, ServiceError> {
     debug!("servicing new_hackstead request");
 
     let stead = Hackstead::new_user(user.slack_id.as_ref());
-    db_insert_hackstead_transactional(&db_pool().await?, stead.clone()).await?;
+    db_insert_hackstead_transactional(&db, stead.clone()).await?;
 
     Ok(HttpResponse::Created().json(&stead))
 }
 
 #[post("/hackstead/remove")]
-pub async fn remove_hackstead(user: web::Json<UserId>) -> Result<HttpResponse, ServiceError> {
+pub async fn remove_hackstead(
+    db: web::Data<PgPool>,
+    user: web::Json<UserId>,
+) -> Result<HttpResponse, ServiceError> {
     debug!("servicing remove_hackstead request");
 
-    let pool = db_pool().await?;
-    let stead: Hackstead = db_get_hackstead(&pool, &*user).await?;
+    let stead: Hackstead = db_get_hackstead(&db, &*user).await?;
     match &*user {
         UserId::Uuid(uuid) | UserId::Both { uuid, .. } => {
             sqlx::query!("DELETE FROM steaders * WHERE steader_id = $1", *uuid)
-                .execute(&pool)
+                .execute(&**db)
                 .await
         }
         UserId::Slack(slack_id) => {
             sqlx::query!("DELETE FROM steaders * WHERE slack_id = $1", slack_id)
-                .execute(&pool)
+                .execute(&**db)
                 .await
         }
     }?;

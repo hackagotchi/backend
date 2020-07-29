@@ -1,4 +1,4 @@
-use crate::{db_pool, ServiceError};
+use crate::ServiceError;
 use actix_web::{post, web, HttpResponse};
 use futures::stream::{self, StreamExt, TryStreamExt};
 use hcor::{
@@ -144,11 +144,13 @@ pub async fn db_extend_item_base(pool: &PgPool, base: ItemBase) -> sqlx::Result<
 }
 
 #[post("/item/spawn")]
-pub async fn spawn_items(req: web::Json<Vec<Item>>) -> Result<HttpResponse, ServiceError> {
+pub async fn spawn_items(
+    db: web::Data<PgPool>,
+    req: web::Json<Vec<Item>>
+) -> Result<HttpResponse, ServiceError> {
     debug!("servicing spawn_items request");
 
-    let pool = db_pool().await?;
-    let mut tx = pool.begin().await?;
+    let mut tx = db.begin().await?;
     for item in req.clone() {
         db_insert_item(&mut tx, item).await?;
     }
@@ -159,14 +161,14 @@ pub async fn spawn_items(req: web::Json<Vec<Item>>) -> Result<HttpResponse, Serv
 
 #[post("/item/transfer")]
 pub async fn transfer_items(
+    db: web::Data<PgPool>,
     req: web::Json<ItemTransferRequest>,
 ) -> Result<HttpResponse, ServiceError> {
     debug!("servicing transfer_items request");
 
-    let pool = db_pool().await?;
-    let mut tx = pool.begin().await?;
+    let mut tx = db.begin().await?;
     for &item_id in &req.item_ids {
-        let current_owner = db_get_ownership_logs(&pool, item_id)
+        let current_owner = db_get_ownership_logs(&db, item_id)
             .await?
             .into_iter()
             .max_by_key(|ol| ol.owner_index)

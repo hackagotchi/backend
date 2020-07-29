@@ -1,28 +1,13 @@
-const PORT: usize = 9001;
+const PORT: usize = 8000;
 
 #[actix_rt::test]
 /// NOTE: relies on item/spawn!
 async fn test_new_tile() -> Result<(), crate::ServiceError> {
-    use actix_web::{App, HttpServer};
     use hcor::{Hackstead, UserId};
 
     // attempt to establish logging, do nothing if it fails
     // (it probably fails because it's already been established in another test)
     drop(pretty_env_logger::try_init());
-
-    tokio::spawn(
-        HttpServer::new(move || {
-            App::new()
-                .service(crate::hackstead::new_hackstead)
-                .service(crate::hackstead::get_hackstead)
-                .service(crate::hackstead::remove_hackstead)
-                .service(crate::hackstead::item::spawn_items)
-                .service(super::new_tile)
-        })
-        .bind(&format!("127.0.0.1:{}", PORT))
-        .expect(&format!("couldn't bind port {}", PORT))
-        .run(),
-    );
 
     let no_requires_xp_arch = hcor::CONFIG
         .possession_archetypes

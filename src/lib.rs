@@ -3,7 +3,10 @@ use actix_web::{error::ResponseError, HttpResponse};
 use derive_more::Display;
 
 mod hackstead;
-pub use hackstead::{db_insert_hackstead, get_hackstead, new_hackstead, remove_hackstead};
+pub use hackstead::{get_hackstead, new_hackstead, remove_hackstead};
+pub use hackstead::{spawn_items, transfer_items};
+pub use hackstead::{new_tile};
+pub use hackstead::db_insert_hackstead;
 
 pub async fn db_conn() -> Result<sqlx::PgConnection, ServiceError> {
     use sqlx::Connect;
@@ -19,8 +22,14 @@ pub async fn db_conn() -> Result<sqlx::PgConnection, ServiceError> {
     })
 }
 
-const MIN_DB_CONNECTIONS: u32 = 3;
-const MAX_DB_CONNECTIONS: u32 = 3;
+#[cfg(not(test))]
+const MIN_DB_CONNECTIONS: u32 = 85;
+#[cfg(not(test))]
+const MAX_DB_CONNECTIONS: u32 = 85;
+#[cfg(test)]
+const MIN_DB_CONNECTIONS: u32 = 1;
+#[cfg(test)]
+const MAX_DB_CONNECTIONS: u32 = 5;
 pub async fn db_pool() -> Result<sqlx::PgPool, ServiceError> {
     sqlx::PgPool::builder()
         .min_size(MIN_DB_CONNECTIONS)

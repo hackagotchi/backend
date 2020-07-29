@@ -3,24 +3,11 @@ const PORT: usize = 8000;
 
 #[actix_rt::test]
 async fn test_get_hackstead() -> Result<(), ServiceError> {
-    use actix_web::{App, HttpServer};
     use hcor::{Hackstead, UserId};
 
     // attempt to establish logging, do nothing if it fails
     // (it probably fails because it's already been established in another test)
     drop(pretty_env_logger::try_init());
-
-    tokio::spawn(
-        HttpServer::new(move || {
-            App::new()
-                .service(super::new_hackstead)
-                .service(super::get_hackstead)
-                .service(super::remove_hackstead)
-        })
-        .bind(&format!("127.0.0.1:{}", PORT))
-        .expect(&format!("couldn't bind port {}", PORT))
-        .run(),
-    );
 
     // create bob's stead!
     let bob_steader_id = {

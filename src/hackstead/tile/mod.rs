@@ -1,4 +1,4 @@
-use crate::{db_pool, ServiceError};
+use crate::ServiceError;
 use actix_web::{post, web, HttpResponse};
 use futures::stream::{self, StreamExt, TryStreamExt};
 use hcor::hackstead::{Tile, TileBase, TileCreationRequest};
@@ -119,12 +119,14 @@ pub async fn db_insert_tile(
 }
 
 #[post("/tile/new")]
-pub async fn new_tile(req: web::Json<TileCreationRequest>) -> Result<HttpResponse, ServiceError> {
+pub async fn new_tile(
+    db: web::Data<PgPool>,
+    req: web::Json<TileCreationRequest>
+) -> Result<HttpResponse, ServiceError> {
     debug!("servicing new_tile request");
 
-    let pool = db_pool().await?;
-    let mut tx = pool.begin().await?;
-    let item = super::item::db_get_item(&pool, req.tile_consumable_item_id).await?;
+    let mut tx = db.begin().await?;
+    let item = super::item::db_get_item(&db, req.tile_consumable_item_id).await?;
     super::item::db_remove_item(&mut tx, req.tile_consumable_item_id).await?;
 
     let land_unlock = item.unlocks_land.as_ref().ok_or_else(|| {
@@ -134,7 +136,7 @@ pub async fn new_tile(req: web::Json<TileCreationRequest>) -> Result<HttpRespons
         ))
     })?;
 
-    let mut hs = super::db_get_hackstead(&pool, &req.steader).await?;
+    let mut hs = super::db_get_hackstead(&db, &req.steader).await?;
     if !land_unlock.requires_xp {
         hs.profile.extra_land_plot_count += 1;
 
