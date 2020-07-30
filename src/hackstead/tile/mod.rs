@@ -11,7 +11,7 @@ mod plant;
 mod test;
 
 pub async fn db_get_land(pool: &PgPool, steader_id: Uuid) -> sqlx::Result<Vec<Tile>> {
-    stream::iter(
+    let mut tiles: Vec<Tile> = stream::iter(
         sqlx::query_as!(
             TileBase,
             "SELECT * FROM tiles WHERE owner_id = $1",
@@ -23,7 +23,11 @@ pub async fn db_get_land(pool: &PgPool, steader_id: Uuid) -> sqlx::Result<Vec<Ti
     .map(|base| db_extend_tile_base(pool, base))
     .buffer_unordered(crate::MIN_DB_CONNECTIONS as usize)
     .try_collect()
-    .await
+    .await?;
+
+    tiles.sort_unstable_by_key(|t| t.base.acquired);
+
+    Ok(tiles)
 }
 
 pub async fn db_extend_tile_base(

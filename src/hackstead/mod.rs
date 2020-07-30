@@ -7,7 +7,7 @@ use hcor::{
 use log::*;
 pub use sqlx::{Executor, PgPool, Postgres};
 
-pub use item::{spawn_items, transfer_items};
+pub use item::{spawn_items, transfer_items, hatch_item};
 pub use tile::new_tile;
 
 mod item;

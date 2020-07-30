@@ -45,6 +45,7 @@ reqwest = { version = "0.10", features = [ "json" ] }
 tokio = { version = "0.2", features = [ "macros" ] }
 chrono = "0.4"
 uuid = { version = "0.8", features = ["v4", "serde"] }
+rand = "0.7.3"
 [dependencies.sqlx]
 version = "0.3"
 features = [

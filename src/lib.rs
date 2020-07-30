@@ -6,7 +6,7 @@ mod hackstead;
 pub use hackstead::db_insert_hackstead;
 pub use hackstead::new_tile;
 pub use hackstead::{get_hackstead, new_hackstead, remove_hackstead};
-pub use hackstead::{spawn_items, transfer_items};
+pub use hackstead::{spawn_items, transfer_items, hatch_item};
 
 pub async fn db_conn() -> Result<sqlx::PgConnection, ServiceError> {
     use sqlx::Connect;

@@ -1,7 +1,7 @@
 use crate::ServiceError;
 use actix_web::{post, web, HttpResponse};
 use futures::stream::{self, StreamExt, TryStreamExt};
-use hcor::item::{self, Item, ItemBase, ItemSpawnRequest, ItemTransferRequest};
+use hcor::item::{self, Item, ItemBase, ItemSpawnRequest, ItemTransferRequest, ItemHatchRequest};
 use log::*;
 use sqlx::{Executor, PgPool, Postgres};
 use uuid::Uuid;
@@ -10,7 +10,7 @@ use uuid::Uuid;
 mod test;
 
 pub async fn db_get_inventory(pool: &PgPool, steader_id: Uuid) -> sqlx::Result<Vec<Item>> {
-    stream::iter(
+    let mut items: Vec<Item> = stream::iter(
         sqlx::query_as!(
             ItemBase,
             "SELECT * FROM items WHERE owner_id = $1",
@@ -22,7 +22,11 @@ pub async fn db_get_inventory(pool: &PgPool, steader_id: Uuid) -> sqlx::Result<V
     .map(|base| db_extend_item_base(pool, base))
     .buffer_unordered(crate::MIN_DB_CONNECTIONS as usize)
     .try_collect()
-    .await
+    .await?;
+
+    items.sort_unstable_by_key(|i| i.base.archetype_handle);
+
+    Ok(items)
 }
 
 pub async fn db_get_item(pool: &PgPool, item_id: Uuid) -> sqlx::Result<Item> {
@@ -103,7 +107,12 @@ pub async fn db_get_ownership_logs(
     pool: &PgPool,
     item_id: Uuid,
 ) -> sqlx::Result<Vec<item::LoggedOwner>> {
-    let q = sqlx::query!("SELECT * FROM ownership_logs WHERE item_id = $1", item_id);
+    let q = sqlx::query!(
+        "SELECT * FROM ownership_logs \
+            WHERE item_id = $1
+            ORDER BY owner_index",
+        item_id
+    );
 
     q.fetch_all(pool).await.map(|a| {
         a.into_iter()
@@ -189,6 +198,14 @@ pub async fn transfer_items(
     let receiver_id = super::uuid_or_lookup(&db, &req.receiver_id).await?;
     let sender_id = super::uuid_or_lookup(&db, &req.sender_id).await?;
 
+    if receiver_id == sender_id {
+        return Err(ServiceError::bad_request(format!(
+            "can't transfer items from user {} to user {}; \
+                they're the same user.",
+            sender_id, receiver_id
+        )));
+    }
+
     let mut item_bases: Vec<ItemBase> = Vec::with_capacity(req.item_ids.len());
     for &item_id in &req.item_ids {
         let current_owner = db_get_ownership_logs(&db, item_id)
@@ -242,6 +259,45 @@ pub async fn transfer_items(
         .buffer_unordered(crate::MIN_DB_CONNECTIONS as usize)
         .try_collect()
         .await?;
+
+    Ok(HttpResponse::Ok().json(items))
+}
+
+#[post("/item/hatch")]
+pub async fn hatch_item(
+    db: web::Data<PgPool>,
+    req: web::Json<ItemHatchRequest>,
+) -> Result<HttpResponse, ServiceError> {
+    debug!("servicing new_tile request");
+
+    let mut tx = db.begin().await?;
+    let item_id = req.hatchable_item_id;
+    let item = super::item::db_get_item(&db, item_id).await?;
+    super::item::db_remove_item(&mut tx, item_id).await?;
+
+    let hatch_table = item.hatch_table.as_ref().ok_or_else(|| {
+        ServiceError::bad_request(format!(
+            "item {}[{}] is not configured to be hatchable",
+            item.name, item.base.archetype_handle,
+        ))
+    })?;
+
+    let items = hcor::config::spawn(&hatch_table, &mut rand::thread_rng())
+        .map(|item_name| Item::from_archetype(
+            hcor::CONFIG.find_possession(&item_name)?,
+            item.base.owner_id,
+            item::Acquisition::Hatched
+        ))
+        .collect::<Result<Vec<Item>, hcor::ConfigError>>()
+        .map_err(|e| {
+            error!("hatch table produced: {}", e);
+            ServiceError::InternalServerError
+        })?;
+
+    for i in items.clone() {
+        db_insert_item(&mut tx, i).await?;
+    }
+    tx.commit().await?;
 
     Ok(HttpResponse::Ok().json(items))
 }

@@ -14,6 +14,7 @@ async fn main() -> std::io::Result<()> {
             .service(backend::remove_hackstead)
             .service(backend::spawn_items)
             .service(backend::transfer_items)
+            .service(backend::hatch_item)
             .service(backend::new_tile)
     })
     .bind("127.0.0.1:8000")?
