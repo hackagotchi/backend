@@ -11,7 +11,7 @@ pub use item::{spawn_items, transfer_items};
 pub use tile::new_tile;
 
 mod item;
-#[cfg(test)]
+#[cfg(all(test, feature = "hcor_client"))]
 mod test;
 mod tile;
 
@@ -130,8 +130,11 @@ pub async fn new_hackstead(
 
     let stead = Hackstead::new_user(user.slack_id.as_ref());
     db_insert_hackstead_transactional(&db, stead.clone()).await?;
+    let user_id = UserId::Uuid(stead.profile.steader_id);
 
-    Ok(HttpResponse::Created().json(&stead))
+    // get a fresh stead because SQL likes to give the timestamps a higher resolution than they are
+    // when they go in.
+    Ok(HttpResponse::Created().json(&db_get_hackstead(&db, &user_id).await?))
 }
 
 #[post("/hackstead/remove")]

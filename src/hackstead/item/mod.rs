@@ -1,15 +1,12 @@
 use crate::ServiceError;
 use actix_web::{post, web, HttpResponse};
 use futures::stream::{self, StreamExt, TryStreamExt};
-use hcor::{
-    item::{self, ItemBase, ItemTransferRequest},
-    Item,
-};
+use hcor::item::{self, Item, ItemBase, ItemSpawnRequest, ItemTransferRequest};
 use log::*;
 use sqlx::{Executor, PgPool, Postgres};
 use uuid::Uuid;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "hcor_client"))]
 mod test;
 
 pub async fn db_get_inventory(pool: &PgPool, steader_id: Uuid) -> sqlx::Result<Vec<Item>> {
@@ -149,17 +146,36 @@ pub async fn db_extend_item_base(pool: &PgPool, base: ItemBase) -> sqlx::Result<
 #[post("/item/spawn")]
 pub async fn spawn_items(
     db: web::Data<PgPool>,
-    req: web::Json<Vec<Item>>
+    req: web::Json<ItemSpawnRequest>,
 ) -> Result<HttpResponse, ServiceError> {
     debug!("servicing spawn_items request");
 
+    let ItemSpawnRequest {
+        receiver_id,
+        item_archetype_handle,
+        amount,
+    } = req.clone();
+
+    let receiver_uuid = super::uuid_or_lookup(&db, &receiver_id).await?;
     let mut tx = db.begin().await?;
-    for item in req.clone() {
+
+    let items: Vec<Item> = (0..amount)
+        .map(|_| {
+            Item::from_archetype_handle(
+                item_archetype_handle,
+                receiver_uuid,
+                item::Acquisition::spawned(),
+            )
+        })
+        .collect::<hcor::ConfigResult<_>>()?;
+
+    for item in items.clone() {
         db_insert_item(&mut tx, item).await?;
     }
+
     tx.commit().await?;
 
-    Ok(HttpResponse::Ok().finish())
+    Ok(HttpResponse::Ok().json(items))
 }
 
 #[post("/item/transfer")]
@@ -172,6 +188,8 @@ pub async fn transfer_items(
     let mut tx = db.begin().await?;
     let receiver_id = super::uuid_or_lookup(&db, &req.receiver_id).await?;
     let sender_id = super::uuid_or_lookup(&db, &req.sender_id).await?;
+
+    let mut item_bases: Vec<ItemBase> = Vec::with_capacity(req.item_ids.len());
     for &item_id in &req.item_ids {
         let current_owner = db_get_ownership_logs(&db, item_id)
             .await?
@@ -201,18 +219,29 @@ pub async fn transfer_items(
         )
         .await?;
 
-        sqlx::query!(
+        let base = sqlx::query_as!(
+            ItemBase,
             "UPDATE items \
                 SET owner_id = $1 \
-                WHERE item_id = $2 AND owner_id = $3",
+                WHERE item_id = $2 AND owner_id = $3 \
+                RETURNING *",
             receiver_id,
             item_id,
             sender_id,
         )
-        .execute(&mut tx)
+        .fetch_one(&mut tx)
         .await?;
+
+        item_bases.push(base);
     }
+
     tx.commit().await?;
 
-    Ok(HttpResponse::Ok().finish())
+    let items: Vec<Item> = stream::iter(item_bases)
+        .map(|base| db_extend_item_base(&db, base))
+        .buffer_unordered(crate::MIN_DB_CONNECTIONS as usize)
+        .try_collect()
+        .await?;
+
+    Ok(HttpResponse::Ok().json(items))
 }

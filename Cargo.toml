@@ -16,6 +16,9 @@ name = "server"
 path = "./src/from_csv.rs"
 name = "from_csv"
 
+[features]
+hcor_client = [ "hcor/client" ]
+
 [dependencies]
 
 # logging

@@ -3,10 +3,10 @@ use actix_web::{error::ResponseError, HttpResponse};
 use derive_more::Display;
 
 mod hackstead;
+pub use hackstead::db_insert_hackstead;
+pub use hackstead::new_tile;
 pub use hackstead::{get_hackstead, new_hackstead, remove_hackstead};
 pub use hackstead::{spawn_items, transfer_items};
-pub use hackstead::{new_tile};
-pub use hackstead::db_insert_hackstead;
 
 pub async fn db_conn() -> Result<sqlx::PgConnection, ServiceError> {
     use sqlx::Connect;
@@ -101,5 +101,11 @@ impl From<sqlx::Error> for ServiceError {
             sqlx::Error::RowNotFound => ServiceError::bad_request("No such data"),
             _ => ServiceError::InternalServerError,
         }
+    }
+}
+
+impl From<hcor::ConfigError> for ServiceError {
+    fn from(e: hcor::ConfigError) -> ServiceError {
+        ServiceError::bad_request(e)
     }
 }

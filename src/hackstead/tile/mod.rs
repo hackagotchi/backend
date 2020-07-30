@@ -7,7 +7,7 @@ use sqlx::{Executor, PgPool, Postgres};
 use uuid::Uuid;
 
 mod plant;
-#[cfg(test)]
+#[cfg(all(test, feature = "hcor_client"))]
 mod test;
 
 pub async fn db_get_land(pool: &PgPool, steader_id: Uuid) -> sqlx::Result<Vec<Tile>> {
@@ -121,13 +121,14 @@ pub async fn db_insert_tile(
 #[post("/tile/new")]
 pub async fn new_tile(
     db: web::Data<PgPool>,
-    req: web::Json<TileCreationRequest>
+    req: web::Json<TileCreationRequest>,
 ) -> Result<HttpResponse, ServiceError> {
     debug!("servicing new_tile request");
 
     let mut tx = db.begin().await?;
-    let item = super::item::db_get_item(&db, req.tile_consumable_item_id).await?;
-    super::item::db_remove_item(&mut tx, req.tile_consumable_item_id).await?;
+    let item_id = req.tile_redeemable_item_id;
+    let item = super::item::db_get_item(&db, item_id).await?;
+    super::item::db_remove_item(&mut tx, item_id).await?;
 
     let land_unlock = item.unlocks_land.as_ref().ok_or_else(|| {
         ServiceError::bad_request(format!(
@@ -136,7 +137,7 @@ pub async fn new_tile(
         ))
     })?;
 
-    let mut hs = super::db_get_hackstead(&db, &req.steader).await?;
+    let mut hs = super::db_get_hackstead(&db, &hcor::UserId::Uuid(item.base.owner_id)).await?;
     if !land_unlock.requires_xp {
         hs.profile.extra_land_plot_count += 1;
 

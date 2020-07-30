@@ -1,14 +1,10 @@
-use actix_web::{App, web, HttpServer};
+use actix_web::{web, App, HttpServer};
 
 #[actix_rt::main]
 async fn main() -> std::io::Result<()> {
     pretty_env_logger::init();
 
-    let db = web::Data::new(
-        backend::db_pool()
-            .await
-            .expect("couldn't make db pool")
-    );
+    let db = web::Data::new(backend::db_pool().await.expect("couldn't make db pool"));
 
     HttpServer::new(move || {
         App::new()
