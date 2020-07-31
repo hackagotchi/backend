@@ -7,11 +7,7 @@ mod hackstead;
 pub(crate) use hackstead::{item, plant, tile};
 
 pub use hackstead::db_insert_hackstead;
-pub use hackstead::{
-    get_hackstead,
-    new_hackstead,
-    remove_hackstead,
-};
+pub use hackstead::{get_hackstead, new_hackstead, remove_hackstead};
 pub use hackstead::{
     item::{hatch_item, spawn_items, transfer_items},
     plant::{new_plant, remove_plant},

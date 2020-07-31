@@ -1,17 +1,21 @@
-use hcor::plant::{self, Plant, PlantBase, PlantCreationRequest, PlantRemovalRequest};
-use sqlx::{PgConnection, PgPool};
 use crate::ServiceError;
 use actix_web::{post, web, HttpResponse};
-use uuid::Uuid;
+use hcor::plant::{self, Plant, PlantBase, PlantCreationRequest, PlantRemovalRequest};
 use log::*;
+use sqlx::{PgConnection, PgPool};
+use uuid::Uuid;
 
-#[cfg(all(test, feature="hcor_client"))]
+#[cfg(all(test, feature = "hcor_client"))]
 mod test;
 
 pub async fn db_get_plant(pool: &PgPool, tile_id: Uuid) -> sqlx::Result<Plant> {
-    let plant_base = sqlx::query_as!(PlantBase, "SELECT * FROM plants WHERE tile_id = $1", tile_id)
-        .fetch_one(pool)
-        .await?;
+    let plant_base = sqlx::query_as!(
+        PlantBase,
+        "SELECT * FROM plants WHERE tile_id = $1",
+        tile_id
+    )
+    .fetch_one(pool)
+    .await?;
 
     db_extend_plant_base(pool, plant_base).await
 }
@@ -124,9 +128,7 @@ pub async fn new_plant(
     if let Some(plant) = tile.plant {
         return Err(ServiceError::bad_request(format!(
             "can't plant here; tile {} is already occupied by a {}[{}] plant.",
-            tile_id,
-            plant.name,
-            plant.base.archetype_handle,
+            tile_id, plant.name, plant.base.archetype_handle,
         )));
     }
 
@@ -147,7 +149,7 @@ pub async fn remove_plant(
 ) -> Result<HttpResponse, ServiceError> {
     debug!("servicing remove_plant request");
 
-    let PlantRemovalRequest { tile_id }  = req.clone();
+    let PlantRemovalRequest { tile_id } = req.clone();
     let plant: Plant = db_get_plant(&db, tile_id).await?;
     sqlx::query!("DELETE FROM plants * WHERE tile_id = $1", tile_id)
         .execute(&**db)
