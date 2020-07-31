@@ -23,7 +23,10 @@ async fn test_get_hackstead() -> hcor::ClientResult<()> {
 
     // make sure we can't kill an already dead bob
     match bobstead.slaughter().await {
-        Err(e) => log::info!("received error as expected killing bob a second time: {}", e),
+        Err(e) => log::info!(
+            "received error as expected killing bob a second time: {}",
+            e
+        ),
         Ok(_) => panic!("killing bob a second time worked somehow"),
     }
 

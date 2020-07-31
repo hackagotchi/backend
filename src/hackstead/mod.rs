@@ -5,20 +5,15 @@ use hcor::{
     Hackstead, UserId,
 };
 use log::*;
-pub use sqlx::{Executor, PgPool, Postgres};
+use sqlx::{PgConnection, PgPool};
 
-pub use item::{spawn_items, transfer_items, hatch_item};
-pub use tile::new_tile;
-
-mod item;
+pub(crate) mod item;
 #[cfg(all(test, feature = "hcor_client"))]
 mod test;
-mod tile;
+pub(crate) mod tile;
+pub(crate) use tile::plant;
 
-pub async fn db_insert_hackstead(
-    exec: &mut impl Executor<Database = Postgres>,
-    hs: Hackstead,
-) -> sqlx::Result<()> {
+pub async fn db_insert_hackstead(conn: &mut PgConnection, hs: Hackstead) -> sqlx::Result<()> {
     sqlx::query!(
         "INSERT INTO steaders\
             ( steader_id\
@@ -38,14 +33,14 @@ pub async fn db_insert_hackstead(
         hs.profile.last_active,
         hs.profile.last_farm,
     )
-    .execute(&mut *exec)
+    .execute(&mut *conn)
     .await?;
 
     for i in hs.inventory {
-        item::db_insert_item(&mut *exec, i).await?;
+        item::db_insert_item(&mut *conn, i).await?;
     }
     for t in hs.land {
-        tile::db_insert_tile(&mut *exec, t).await?;
+        tile::db_insert_tile(&mut *conn, t).await?;
     }
 
     Ok(())

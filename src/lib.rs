@@ -3,10 +3,20 @@ use actix_web::{error::ResponseError, HttpResponse};
 use derive_more::Display;
 
 mod hackstead;
+#[allow(unused_imports)]
+pub(crate) use hackstead::{item, plant, tile};
+
 pub use hackstead::db_insert_hackstead;
-pub use hackstead::new_tile;
-pub use hackstead::{get_hackstead, new_hackstead, remove_hackstead};
-pub use hackstead::{spawn_items, transfer_items, hatch_item};
+pub use hackstead::{
+    get_hackstead,
+    new_hackstead,
+    remove_hackstead,
+};
+pub use hackstead::{
+    item::{hatch_item, spawn_items, transfer_items},
+    plant::{new_plant, remove_plant},
+    tile::new_tile,
+};
 
 pub async fn db_conn() -> Result<sqlx::PgConnection, ServiceError> {
     use sqlx::Connect;

@@ -9,13 +9,19 @@ async fn main() -> std::io::Result<()> {
     HttpServer::new(move || {
         App::new()
             .app_data(db.clone())
+            // hackstead
             .service(backend::get_hackstead)
             .service(backend::new_hackstead)
             .service(backend::remove_hackstead)
+            // item
             .service(backend::spawn_items)
             .service(backend::transfer_items)
             .service(backend::hatch_item)
+            // tile
             .service(backend::new_tile)
+            // plant
+            .service(backend::new_plant)
+            .service(backend::remove_plant)
     })
     .bind("127.0.0.1:8000")?
     .run()

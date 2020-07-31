@@ -36,7 +36,7 @@ async fn test_new_tile() -> hcor::ClientResult<()> {
     async fn new_tile_assuming(
         bobstead: &mut Hackstead,
         item: &hcor::Item,
-        assumptions: NewTileAssumptions
+        assumptions: NewTileAssumptions,
     ) -> hcor::ClientResult<()> {
         let requested_tile = item.redeem_for_tile().await;
 

@@ -1,9 +1,9 @@
 use crate::ServiceError;
 use actix_web::{post, web, HttpResponse};
 use futures::stream::{self, StreamExt, TryStreamExt};
-use hcor::item::{self, Item, ItemBase, ItemSpawnRequest, ItemTransferRequest, ItemHatchRequest};
+use hcor::item::{self, Item, ItemBase, ItemHatchRequest, ItemSpawnRequest, ItemTransferRequest};
 use log::*;
-use sqlx::{Executor, PgPool, Postgres};
+use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
 #[cfg(all(test, feature = "hcor_client"))]
@@ -37,21 +37,15 @@ pub async fn db_get_item(pool: &PgPool, item_id: Uuid) -> sqlx::Result<Item> {
     db_extend_item_base(pool, item_base).await
 }
 
-pub async fn db_remove_item(
-    mut exec: impl Executor<Database = Postgres>,
-    item_id: Uuid,
-) -> sqlx::Result<()> {
+pub async fn db_remove_item(conn: &mut PgConnection, item_id: Uuid) -> sqlx::Result<()> {
     sqlx::query!("DELETE FROM items * WHERE item_id = $1", item_id)
-        .execute(&mut exec)
+        .execute(&mut *conn)
         .await?;
 
     Ok(())
 }
 
-pub async fn db_insert_item(
-    mut exec: impl Executor<Database = Postgres>,
-    i: Item,
-) -> sqlx::Result<()> {
+pub async fn db_insert_item(conn: &mut PgConnection, i: Item) -> sqlx::Result<()> {
     sqlx::query!(
         "INSERT INTO items ( item_id, owner_id, archetype_handle ) \
             VALUES ( $1, $2, $3 )",
@@ -59,7 +53,7 @@ pub async fn db_insert_item(
         i.base.owner_id,
         i.base.archetype_handle
     )
-    .execute(&mut exec)
+    .execute(&mut *conn)
     .await?;
 
     if let Some(g) = i.gotchi {
@@ -69,19 +63,19 @@ pub async fn db_insert_item(
             i.base.item_id,
             g.nickname
         )
-        .execute(&mut exec)
+        .execute(&mut *conn)
         .await?;
     }
 
     for ol in i.ownership_log {
-        db_insert_logged_owner(&mut exec, ol).await?;
+        db_insert_logged_owner(&mut *conn, ol).await?;
     }
 
     Ok(())
 }
 
 pub async fn db_insert_logged_owner(
-    mut exec: impl Executor<Database = Postgres>,
+    conn: &mut PgConnection,
     ol: item::LoggedOwner,
 ) -> sqlx::Result<()> {
     sqlx::query!(
@@ -97,7 +91,7 @@ pub async fn db_insert_logged_owner(
         ol.owner_index,
         ol.acquisition as i32,
     )
-    .execute(&mut exec)
+    .execute(&mut *conn)
     .await?;
 
     Ok(())
@@ -272,8 +266,8 @@ pub async fn hatch_item(
 
     let mut tx = db.begin().await?;
     let item_id = req.hatchable_item_id;
-    let item = super::item::db_get_item(&db, item_id).await?;
-    super::item::db_remove_item(&mut tx, item_id).await?;
+    let item = db_get_item(&db, item_id).await?;
+    db_remove_item(&mut tx, item_id).await?;
 
     let hatch_table = item.hatch_table.as_ref().ok_or_else(|| {
         ServiceError::bad_request(format!(
@@ -283,11 +277,13 @@ pub async fn hatch_item(
     })?;
 
     let items = hcor::config::spawn(&hatch_table, &mut rand::thread_rng())
-        .map(|item_name| Item::from_archetype(
-            hcor::CONFIG.find_possession(&item_name)?,
-            item.base.owner_id,
-            item::Acquisition::Hatched
-        ))
+        .map(|item_name| {
+            Item::from_archetype(
+                hcor::CONFIG.find_possession(&item_name)?,
+                item.base.owner_id,
+                item::Acquisition::Hatched,
+            )
+        })
         .collect::<Result<Vec<Item>, hcor::ConfigError>>()
         .map_err(|e| {
             error!("hatch table produced: {}", e);

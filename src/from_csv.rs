@@ -169,7 +169,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 })
             }
             3 => {
-                use hcor::hackstead::plant::{Craft, Effect, PlantBase};
+                use hcor::plant::{Craft, Effect};
 
                 #[derive(serde::Serialize, serde::Deserialize)]
                 struct OldPlant {
@@ -212,14 +212,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .as_ref()
                     .map(|p| as_json(p).expect("bad plant json"));
 
-                hs.land.push(hcor::hackstead::Tile {
-                    base: hcor::hackstead::TileBase {
+                hs.land.push(hcor::Tile {
+                    base: hcor::tile::TileBase {
                         acquired: parse_date_time(acquired),
                         tile_id,
                         owner_id: hs.profile.steader_id,
                     },
-                    plant: p.map(|p| hcor::hackstead::Plant {
-                        base: PlantBase {
+                    plant: p.map(|p| hcor::Plant {
+                        base: hcor::plant::PlantBase {
                             xp: p.xp,
                             until_yield: p.until_yield,
                             archetype_handle: p.archetype_handle,

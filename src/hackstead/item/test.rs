@@ -69,8 +69,10 @@ async fn test_transfer_item() -> hcor::ClientResult<()> {
         .spawn_items(ITEM_ARCHETYPE, ITEM_SPAWN_COUNT)
         .await?;
 
-    debug!("refresh our copy of bob's stead and assert that \
-          each item has only had one logged owner.");
+    debug!(
+        "refresh our copy of bob's stead and assert that \
+          each item has only had one logged owner."
+    );
     for item in &items {
         assert_eq!(
             item.ownership_log.len(),
@@ -91,9 +93,11 @@ async fn test_transfer_item() -> hcor::ClientResult<()> {
     bobstead = Hackstead::fetch(&bobstead).await?;
     evestead = Hackstead::fetch(&evestead).await?;
 
-    debug!("make sure bob doesn't have the items, \
+    debug!(
+        "make sure bob doesn't have the items, \
         but that eve does and their ownership log records bob \
-        as the original owner.");
+        as the original owner."
+    );
     for item in &items {
         assert!(
             !bobstead.has_item(item),
@@ -129,8 +133,15 @@ async fn test_transfer_item() -> hcor::ClientResult<()> {
     let item = items.last().unwrap().give_to(&bobstead).await?;
     debug!("make sure bob shows up in two different places now");
     assert_eq!(
-        vec![bobstead.steader_id(), evestead.steader_id(), bobstead.steader_id()],
-        item.ownership_log.iter().map(|o| o.logged_owner_id).collect::<Vec<_>>(),
+        vec![
+            bobstead.steader_id(),
+            evestead.steader_id(),
+            bobstead.steader_id()
+        ],
+        item.ownership_log
+            .iter()
+            .map(|o| o.logged_owner_id)
+            .collect::<Vec<_>>(),
     );
 
     debug!("try to give an item from bob to bob");
@@ -141,19 +152,30 @@ async fn test_transfer_item() -> hcor::ClientResult<()> {
 
     debug!("try to give bob's item to bob as if eve owns it");
     match evestead.give_items(&bobstead, &vec![item]).await {
-        Err(e) => info!("received error as expected trying to give someone else's item: {}", e),
+        Err(e) => info!(
+            "received error as expected trying to give someone else's item: {}",
+            e
+        ),
         Ok(i) => panic!("unexpectedly able to give someone else's item: {:#?}", i),
     }
-    
+
     debug!("make sure all gives still fail when the items are of mixed ownership");
     match evestead.give_items(&bobstead, &items).await {
-        Err(e) => info!("received error as expected trying to give items of mixed ownership: {}", e),
-        Ok(i) => panic!("unexpectedly able to give away items of mixed ownership: {:#?}", i),
+        Err(e) => info!(
+            "received error as expected trying to give items of mixed ownership: {}",
+            e
+        ),
+        Ok(i) => panic!(
+            "unexpectedly able to give away items of mixed ownership: {:#?}",
+            i
+        ),
     }
 
-    debug!("mixed ownership transaction should have completely failed \
+    debug!(
+        "mixed ownership transaction should have completely failed \
         so eve should still have her items, \
-        excluding the last one which was legitimately given to bob.");
+        excluding the last one which was legitimately given to bob."
+    );
     items.pop();
     evestead = Hackstead::fetch(&evestead).await?;
     for item in &items {
@@ -200,7 +222,10 @@ async fn test_hatch_item() -> hcor::ClientResult<()> {
     debug!("let's start off by hatching the unhatchable and making sure that doesn't work.");
     match unhatchable_item.hatch().await {
         Ok(items) => panic!("unhatchable item unexpectedly hatched into: {:#?}", items),
-        Err(e) => info!("received error as expected upon attempting to hatch unhatchable item: {}", e),
+        Err(e) => info!(
+            "received error as expected upon attempting to hatch unhatchable item: {}",
+            e
+        ),
     }
     assert_eq!(
         bobstead.inventory.len(),
@@ -211,8 +236,10 @@ async fn test_hatch_item() -> hcor::ClientResult<()> {
     debug!("great, now let's try actually hatching something hatchable!");
     let hatched_items = hatchable_item.hatch().await?;
 
-    debug!("let's make sure bob's inventory grew proportionally \
-          to the amount of items hatching produced");
+    debug!(
+        "let's make sure bob's inventory grew proportionally \
+          to the amount of items hatching produced"
+    );
     let starting_inventory = bobstead.inventory.clone();
     let new_inventory = Hackstead::fetch(&bobstead).await?.inventory;
     assert_eq!(
@@ -233,7 +260,10 @@ async fn test_hatch_item() -> hcor::ClientResult<()> {
                 to hatch this twice, got: {:#?}",
             items
         ),
-        Err(e) => info!("got error as expected from hatching already hatched item: {}", e),
+        Err(e) => info!(
+            "got error as expected from hatching already hatched item: {}",
+            e
+        ),
     }
 
     debug!("kill bob so he's not left in the database");

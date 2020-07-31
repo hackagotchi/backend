@@ -42,14 +42,14 @@ CREATE TABLE IF NOT EXISTS tiles
     , acquired TIMESTAMPTZ NOT NULL
     );
 CREATE TABLE IF NOT EXISTS plants
-    ( tile_id UUID NOT NULL REFERENCES tiles (tile_id) ON DELETE CASCADE
+    ( tile_id UUID PRIMARY KEY REFERENCES tiles (tile_id) ON DELETE CASCADE
     , xp INT NOT NULL
     , nickname VARCHAR(64) NOT NULL
     , until_yield FLOAT NOT NULL
     , archetype_handle INT NOT NULL
     );
 CREATE TABLE IF NOT EXISTS plant_crafts
-    ( tile_id UUID NOT NULL REFERENCES tiles (tile_id) ON DELETE CASCADE
+    ( tile_id UUID PRIMARY KEY REFERENCES tiles (tile_id) ON DELETE CASCADE
     , until_finish FLOAT NOT NULL
     , recipe_archetype_handle INT NOT NULL
     );

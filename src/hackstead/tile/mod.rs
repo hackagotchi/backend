@@ -1,12 +1,12 @@
 use crate::ServiceError;
 use actix_web::{post, web, HttpResponse};
 use futures::stream::{self, StreamExt, TryStreamExt};
-use hcor::hackstead::{Tile, TileBase, TileCreationRequest};
+use hcor::tile::{Tile, TileBase, TileCreationRequest};
 use log::*;
-use sqlx::{Executor, PgPool, Postgres};
+use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
 
-mod plant;
+pub(crate) mod plant;
 #[cfg(all(test, feature = "hcor_client"))]
 mod test;
 
@@ -30,31 +30,25 @@ pub async fn db_get_land(pool: &PgPool, steader_id: Uuid) -> sqlx::Result<Vec<Ti
     Ok(tiles)
 }
 
-pub async fn db_extend_tile_base(
-    pool: &PgPool,
-    base: hcor::hackstead::TileBase,
-) -> sqlx::Result<hcor::hackstead::Tile> {
-    let plant_base = sqlx::query_as!(
-        hcor::hackstead::plant::PlantBase,
-        "SELECT * FROM plants WHERE tile_id = $1",
-        base.tile_id
-    )
-    .fetch_one(pool)
-    .await;
+pub async fn db_get_tile(pool: &PgPool, tile_id: Uuid) -> sqlx::Result<Tile> {
+    let tile_base = sqlx::query_as!(TileBase, "SELECT * FROM tiles WHERE tile_id = $1", tile_id)
+        .fetch_one(pool)
+        .await?;
 
-    Ok(Tile {
-        base,
-        plant: match plant_base.ok() {
-            Some(pb) => Some(plant::db_extend_plant_base(pool, pb).await?),
-            None => None,
-        },
-    })
+    db_extend_tile_base(pool, tile_base).await
 }
 
-pub async fn db_insert_tile(
-    mut exec: impl Executor<Database = Postgres>,
-    t: Tile,
-) -> sqlx::Result<()> {
+pub async fn db_extend_tile_base(pool: &PgPool, base: TileBase) -> sqlx::Result<Tile> {
+    let plant = match plant::db_get_plant(&pool, base.tile_id).await {
+        Ok(p) => Ok(Some(p)),
+        Err(sqlx::Error::RowNotFound) => Ok(None),
+        Err(other) => Err(other),
+    }?;
+
+    Ok(Tile { base, plant })
+}
+
+pub async fn db_insert_tile(conn: &mut PgConnection, t: Tile) -> sqlx::Result<()> {
     sqlx::query!(
         "INSERT INTO tiles ( tile_id, owner_id, acquired ) \
             VALUES ( $1, $2, $3 )",
@@ -62,61 +56,11 @@ pub async fn db_insert_tile(
         t.base.owner_id,
         t.base.acquired,
     )
-    .execute(&mut exec)
+    .execute(&mut *conn)
     .await?;
 
     if let Some(p) = t.plant {
-        sqlx::query!(
-            "INSERT INTO plants\
-                ( tile_id\
-                , xp\
-                , nickname\
-                , until_yield\
-                , archetype_handle\
-                ) \
-            VALUES ( $1, $2, $3, $4, $5 )",
-            p.base.tile_id,
-            p.base.xp,
-            p.base.nickname,
-            p.base.until_yield,
-            p.base.archetype_handle
-        )
-        .execute(&mut exec)
-        .await?;
-
-        if let Some(c) = p.craft {
-            sqlx::query!(
-                "INSERT INTO plant_crafts\
-                    ( tile_id\
-                    , until_finish\
-                    , recipe_archetype_handle\
-                    ) \
-                VALUES ( $1, $2, $3 )",
-                c.tile_id,
-                c.until_finish,
-                c.recipe_archetype_handle
-            )
-            .execute(&mut exec)
-            .await?;
-        }
-
-        for e in p.effects {
-            sqlx::query!(
-                "INSERT INTO plant_effects
-                    ( tile_id\
-                    , until_finish\
-                    , item_archetype_handle\
-                    , effect_archetype_handle\
-                    ) \
-                VALUES ( $1, $2, $3, $4 )",
-                e.tile_id,
-                e.until_finish,
-                e.item_archetype_handle,
-                e.effect_archetype_handle
-            )
-            .execute(&mut exec)
-            .await?;
-        }
+        plant::db_insert_plant(&mut *conn, p).await?;
     }
 
     Ok(())
@@ -127,12 +71,14 @@ pub async fn new_tile(
     db: web::Data<PgPool>,
     req: web::Json<TileCreationRequest>,
 ) -> Result<HttpResponse, ServiceError> {
+    use crate::item::{db_get_item, db_remove_item};
+
     debug!("servicing new_tile request");
 
     let mut tx = db.begin().await?;
     let item_id = req.tile_redeemable_item_id;
-    let item = super::item::db_get_item(&db, item_id).await?;
-    super::item::db_remove_item(&mut tx, item_id).await?;
+    let item = db_get_item(&db, item_id).await?;
+    db_remove_item(&mut tx, item_id).await?;
 
     let land_unlock = item.unlocks_land.as_ref().ok_or_else(|| {
         ServiceError::bad_request(format!(
