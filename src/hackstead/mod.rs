@@ -1,5 +1,5 @@
 use crate::ServiceError;
-use actix_web::{get, post, web, HttpResponse};
+use actix_web::{post, web, HttpResponse};
 use hcor::{
     hackstead::{self, NewHacksteadRequest},
     Hackstead, UserId,
@@ -102,7 +102,7 @@ pub async fn db_get_hackstead(pool: &PgPool, id: &UserId) -> sqlx::Result<hackst
     })
 }
 
-#[get("/hackstead/")]
+#[post("/hackstead/spy")]
 /// Returns a user's hackstead, complete with Profile, Inventory, and Tiles.
 pub async fn get_hackstead(
     db: web::Data<PgPool>,
@@ -116,7 +116,7 @@ pub async fn get_hackstead(
     Ok(HttpResponse::Ok().json(stead))
 }
 
-#[post("/hackstead/new")]
+#[post("/hackstead/summon")]
 pub async fn new_hackstead(
     db: web::Data<PgPool>,
     user: web::Json<NewHacksteadRequest>,
@@ -132,7 +132,7 @@ pub async fn new_hackstead(
     Ok(HttpResponse::Created().json(&db_get_hackstead(&db, &user_id).await?))
 }
 
-#[post("/hackstead/remove")]
+#[post("/hackstead/slaughter")]
 pub async fn remove_hackstead(
     db: web::Data<PgPool>,
     user: web::Json<UserId>,

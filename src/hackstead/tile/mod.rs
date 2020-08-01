@@ -66,7 +66,7 @@ pub async fn db_insert_tile(conn: &mut PgConnection, t: Tile) -> sqlx::Result<()
     Ok(())
 }
 
-#[post("/tile/new")]
+#[post("/tile/summon")]
 pub async fn new_tile(
     db: web::Data<PgPool>,
     req: web::Json<TileCreationRequest>,

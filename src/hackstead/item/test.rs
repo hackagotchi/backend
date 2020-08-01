@@ -89,7 +89,7 @@ async fn test_transfer_item() -> hcor::ClientResult<()> {
     }
 
     debug!("give the items to eve");
-    items = bobstead.give_items(&evestead, &items).await?;
+    items = bobstead.throw_items(&evestead, &items).await?;
     bobstead = Hackstead::fetch(&bobstead).await?;
     evestead = Hackstead::fetch(&evestead).await?;
 
@@ -130,7 +130,7 @@ async fn test_transfer_item() -> hcor::ClientResult<()> {
     }
 
     debug!("transfer a single item back to bob");
-    let item = items.last().unwrap().give_to(&bobstead).await?;
+    let item = items.last().unwrap().throw_at(&bobstead).await?;
     debug!("make sure bob shows up in two different places now");
     assert_eq!(
         vec![
@@ -145,13 +145,13 @@ async fn test_transfer_item() -> hcor::ClientResult<()> {
     );
 
     debug!("try to give an item from bob to bob");
-    match item.give_to(&bobstead).await {
+    match item.throw_at(&bobstead).await {
         Err(e) => info!("received error as expected trying to self-give: {}", e),
         Ok(i) => panic!("unexpectedly able to give item to self: {:#?}", i),
     }
 
     debug!("try to give bob's item to bob as if eve owns it");
-    match evestead.give_items(&bobstead, &vec![item]).await {
+    match evestead.throw_items(&bobstead, &vec![item]).await {
         Err(e) => info!(
             "received error as expected trying to give someone else's item: {}",
             e
@@ -160,7 +160,7 @@ async fn test_transfer_item() -> hcor::ClientResult<()> {
     }
 
     debug!("make sure all gives still fail when the items are of mixed ownership");
-    match evestead.give_items(&bobstead, &items).await {
+    match evestead.throw_items(&bobstead, &items).await {
         Err(e) => info!(
             "received error as expected trying to give items of mixed ownership: {}",
             e

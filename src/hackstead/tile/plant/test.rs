@@ -148,18 +148,13 @@ async fn test_plant_remove() -> hcor::ClientResult<()> {
     // like this by default; it would allow people to make unnecessary requests to kill
     // plants on open tiles, which we only want to do for testing purposes here anyway.
     async fn slaughter_from_tile(tile: &Tile) -> hcor::ClientResult<Plant> {
-        Ok(hcor::client_internal::client()
-            .post(&format!(
-                "{}/{}",
-                *hcor::client_internal::SERVER_URL,
-                "plant/remove"
-            ))
-            .send_json(&hcor::plant::PlantRemovalRequest {
+        hcor::client_internal::request(
+            "plant/slaughter",
+            &hcor::plant::PlantRemovalRequest {
                 tile_id: tile.base.tile_id,
-            })
-            .await?
-            .json()
-            .await?)
+            },
+        )
+        .await
     };
 
     // try to kill his plant when he still doesn't have one.
@@ -270,7 +265,7 @@ async fn test_plant_apply() -> hcor::ClientResult<()> {
         .expect("new hackstead no open tiles")
         .clone();
     let mut plant = tile.plant_seed(&seed_item).await?;
-    let effects = plant.apply_item(&applicable_item).await?;
+    let effects = plant.rub_item(&applicable_item).await?;
 
     bobstead = Hackstead::fetch(&bobstead).await?;
     plant = bobstead.plant(&plant).unwrap().clone();

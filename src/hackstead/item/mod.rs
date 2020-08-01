@@ -146,7 +146,7 @@ pub async fn db_extend_item_base(pool: &PgPool, base: ItemBase) -> sqlx::Result<
     })
 }
 
-#[post("/item/spawn")]
+#[post("/item/godyeet")]
 pub async fn spawn_items(
     db: web::Data<PgPool>,
     req: web::Json<ItemSpawnRequest>,
@@ -181,7 +181,7 @@ pub async fn spawn_items(
     Ok(HttpResponse::Ok().json(items))
 }
 
-#[post("/item/transfer")]
+#[post("/item/throw")]
 pub async fn transfer_items(
     db: web::Data<PgPool>,
     req: web::Json<ItemTransferRequest>,

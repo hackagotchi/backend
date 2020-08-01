@@ -108,7 +108,7 @@ pub async fn db_insert_effect(conn: &mut PgConnection, e: plant::Effect) -> sqlx
     Ok(())
 }
 
-#[post("/plant/new")]
+#[post("/plant/summon")]
 pub async fn new_plant(
     db: web::Data<PgPool>,
     req: web::Json<PlantCreationRequest>,
@@ -150,7 +150,7 @@ pub async fn new_plant(
     Ok(HttpResponse::Ok().json(plant))
 }
 
-#[post("/plant/apply")]
+#[post("/plant/rub")]
 pub async fn apply_plant(
     db: web::Data<PgPool>,
     req: web::Json<PlantApplicationRequest>,
@@ -212,7 +212,7 @@ pub async fn apply_plant(
     Ok(HttpResponse::Ok().json(effects))
 }
 
-#[post("/plant/remove")]
+#[post("/plant/slaughter")]
 pub async fn remove_plant(
     db: web::Data<PgPool>,
     req: web::Json<PlantRemovalRequest>,
