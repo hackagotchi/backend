@@ -10,7 +10,7 @@ pub use hackstead::db_insert_hackstead;
 pub use hackstead::{get_hackstead, new_hackstead, remove_hackstead};
 pub use hackstead::{
     item::{hatch_item, spawn_items, transfer_items},
-    plant::{new_plant, remove_plant, apply_plant},
+    plant::{apply_plant, new_plant, remove_plant},
     tile::new_tile,
 };
 

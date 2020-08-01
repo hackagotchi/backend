@@ -1,6 +1,8 @@
 use crate::ServiceError;
 use actix_web::{post, web, HttpResponse};
-use hcor::plant::{self, Plant, PlantBase, PlantCreationRequest, PlantRemovalRequest, PlantApplicationRequest};
+use hcor::plant::{
+    self, Plant, PlantApplicationRequest, PlantBase, PlantCreationRequest, PlantRemovalRequest,
+};
 use log::*;
 use sqlx::{PgConnection, PgPool};
 use uuid::Uuid;
@@ -173,10 +175,12 @@ pub async fn apply_plant(
     // fetch and verify the tile the plant to apply to
     let tile_id = req.tile_id;
     let tile = super::db_get_tile(&db, tile_id).await?;
-    let plant = tile.plant.as_ref().ok_or_else(|| ServiceError::bad_request(format!(
-        "can't apply {}[{}]; tile {} is not occupied by a plant.",
-        item.name, item.base.archetype_handle, tile_id
-    )))?;
+    let plant = tile.plant.as_ref().ok_or_else(|| {
+        ServiceError::bad_request(format!(
+            "can't apply {}[{}]; tile {} is not occupied by a plant.",
+            item.name, item.base.archetype_handle, tile_id
+        ))
+    })?;
 
     // find out which effects are relevant and apply them, if any are.
     let mut effect_archetypes = plant_application
@@ -198,7 +202,7 @@ pub async fn apply_plant(
             tile_id,
             until_finish: a.duration,
             item_archetype_handle: item.base.archetype_handle,
-            effect_archetype_handle: i as hcor::config::ArchetypeHandle
+            effect_archetype_handle: i as hcor::config::ArchetypeHandle,
         };
         db_insert_effect(&mut tx, e.clone()).await?;
         effects.push(e);

@@ -275,8 +275,7 @@ async fn test_plant_apply() -> hcor::ClientResult<()> {
     bobstead = Hackstead::fetch(&bobstead).await?;
     plant = bobstead.plant(&plant).unwrap().clone();
     assert_eq!(
-        plant.effects,
-        effects,
+        plant.effects, effects,
         "brand new plant has more effects than those from the item that was just applied",
     );
     assert!(
@@ -288,9 +287,9 @@ async fn test_plant_apply() -> hcor::ClientResult<()> {
             .iter()
             .enumerate()
             .all(|(i, a)| {
-                let present = effects.iter().any(|e| {
-                    e.effect_archetype_handle == i as hcor::config::ArchetypeHandle
-                });
+                let present = effects
+                    .iter()
+                    .any(|e| e.effect_archetype_handle == i as hcor::config::ArchetypeHandle);
                 let allowed = !a.for_plants.allows(&plant.name);
                 present || !allowed
             }),
