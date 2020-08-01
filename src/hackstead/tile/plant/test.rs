@@ -121,9 +121,9 @@ async fn test_new_plant() -> hcor::ClientResult<()> {
 }
 
 #[actix_rt::test]
-/// NOTE: relies on plant/new!
+/// NOTE: relies on plant/new, item/spawn!
 async fn test_plant_remove() -> hcor::ClientResult<()> {
-    use hcor::{Hackstead, Plant};
+    use hcor::{Hackstead, Plant, Tile};
 
     // attempt to establish logging, do nothing if it fails
     // (it probably fails because it's already been established in another test)
@@ -147,26 +147,24 @@ async fn test_plant_remove() -> hcor::ClientResult<()> {
     // we have to make a custom function for this because hcor doesn't provide an API
     // like this by default; it would allow people to make unnecessary requests to kill
     // plants on open tiles, which we only want to do for testing purposes here anyway.
-    let slaughter_from_tile = || async {
-        hcor::client_internal::extract_error_or_parse::<Plant>(
-            hcor::client_internal::CLIENT
-                .post(&format!(
-                    "{}/{}",
-                    *hcor::client_internal::SERVER_URL,
-                    "plant/remove"
-                ))
-                .json(&hcor::plant::PlantRemovalRequest {
-                    tile_id: tile.base.tile_id,
-                })
-                .send()
-                .await?,
-        )
-        .await
+    async fn slaughter_from_tile(tile: &Tile) -> hcor::ClientResult<Plant> {
+        Ok(hcor::client_internal::client()
+            .post(&format!(
+                "{}/{}",
+                *hcor::client_internal::SERVER_URL,
+                "plant/remove"
+            ))
+            .send_json(&hcor::plant::PlantRemovalRequest {
+                tile_id: tile.base.tile_id,
+            })
+            .await?
+            .json()
+            .await?)
     };
 
     // try to kill his plant when he still doesn't have one.
     // (let's hope this fails)
-    match slaughter_from_tile().await {
+    match slaughter_from_tile(&tile).await {
         Ok(p) => panic!(
             "plant/remove somehow killed plant on an open tile: {:#?}",
             p
@@ -208,6 +206,97 @@ async fn test_plant_remove() -> hcor::ClientResult<()> {
     };
 
     // kill bob so he's not left in the db
+    bobstead.slaughter().await?;
+
+    Ok(())
+}
+
+/*
+#[actix_rt::test]
+/// NOTE: relies on plant/new, item/spawn, plant/apply!
+async fn test_plant_craft() -> hcor::ClientResult<()> {
+    use hcor::{Hackstead, Plant};
+
+    // attempt to establish logging, do nothing if it fails
+    // (it probably fails because it's already been established in another test)
+    drop(pretty_env_logger::try_init());
+
+    let seed_arch = hcor::CONFIG
+        .possession_archetypes
+        .iter()
+        .find(|a| a.seed.is_some())
+        .expect("no items in config that are seeds?");
+
+    // create bob's stead!
+    let mut bobstead = Hackstead::register().await?;
+    let seed_item = seed_arch.spawn_for(&bobstead).await?;
+    let tile = bobstead
+        .open_tiles()
+        .next()
+        .expect("new hackstead no open tiles")
+        .clone();
+    let plant = tile.plant_seed(&seed_item).await?;
+
+    bobstead.slaughter();
+}*/
+
+#[actix_rt::test]
+/// NOTE: relies on plant/new, item/spawn!
+async fn test_plant_apply() -> hcor::ClientResult<()> {
+    use hcor::Hackstead;
+
+    // attempt to establish logging, do nothing if it fails
+    // (it probably fails because it's already been established in another test)
+    drop(pretty_env_logger::try_init());
+
+    let seed_arch = hcor::CONFIG
+        .possession_archetypes
+        .iter()
+        .find(|a| a.seed.is_some())
+        .expect("no items in config that are seeds?");
+    let applicable_arch = hcor::CONFIG
+        .possession_archetypes
+        .iter()
+        .find(|a| a.plant_application.is_some())
+        .expect("no items in config that are plant applicable?");
+
+    // create bob's stead!
+    let mut bobstead = Hackstead::register().await?;
+    let seed_item = seed_arch.spawn_for(&bobstead).await?;
+    let applicable_item = applicable_arch.spawn_for(&bobstead).await?;
+    let tile = bobstead
+        .open_tiles()
+        .next()
+        .expect("new hackstead no open tiles")
+        .clone();
+    let mut plant = tile.plant_seed(&seed_item).await?;
+    let effects = plant.apply_item(&applicable_item).await?;
+
+    bobstead = Hackstead::fetch(&bobstead).await?;
+    plant = bobstead.plant(&plant).unwrap().clone();
+    assert_eq!(
+        plant.effects,
+        effects,
+        "brand new plant has more effects than those from the item that was just applied",
+    );
+    assert!(
+        applicable_arch
+            .plant_application
+            .as_ref()
+            .unwrap()
+            .effects
+            .iter()
+            .enumerate()
+            .all(|(i, a)| {
+                let present = effects.iter().any(|e| {
+                    e.effect_archetype_handle == i as hcor::config::ArchetypeHandle
+                });
+                let allowed = !a.for_plants.allows(&plant.name);
+                present || !allowed
+            }),
+        "the effects of this item we just applied can't be found on this plant"
+    );
+
     bobstead.slaughter().await?;
 
     Ok(())

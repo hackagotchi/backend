@@ -22,6 +22,7 @@ async fn main() -> std::io::Result<()> {
             // plant
             .service(backend::new_plant)
             .service(backend::remove_plant)
+            .service(backend::apply_plant)
     })
     .bind("127.0.0.1:8000")?
     .run()
