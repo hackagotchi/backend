@@ -1,4 +1,4 @@
-use crate::ServiceError;
+use crate::{uuid_or_lookup, ServiceError};
 use actix_web::{post, web, HttpResponse};
 use futures::stream::{self, StreamExt, TryStreamExt};
 use hcor::item::{self, Item, ItemBase, ItemHatchRequest, ItemSpawnRequest, ItemTransferRequest};
@@ -159,7 +159,7 @@ pub async fn spawn_items(
         amount,
     } = req.clone();
 
-    let receiver_uuid = super::uuid_or_lookup(&db, &receiver_id).await?;
+    let receiver_uuid = uuid_or_lookup(&db, &receiver_id).await?;
     let mut tx = db.begin().await?;
 
     let items: Vec<Item> = (0..amount)
@@ -189,8 +189,8 @@ pub async fn transfer_items(
     debug!("servicing transfer_items request");
 
     let mut tx = db.begin().await?;
-    let receiver_id = super::uuid_or_lookup(&db, &req.receiver_id).await?;
-    let sender_id = super::uuid_or_lookup(&db, &req.sender_id).await?;
+    let receiver_id = uuid_or_lookup(&db, &req.receiver_id).await?;
+    let sender_id = uuid_or_lookup(&db, &req.sender_id).await?;
 
     if receiver_id == sender_id {
         return Err(ServiceError::bad_request(format!(

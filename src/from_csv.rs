@@ -225,11 +225,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             archetype_handle: p.archetype_handle,
                             nickname: p.name.clone(),
                             tile_id,
+                            lifetime_effect_count: p.effects.len() as i32,
                         },
                         effects: p
                             .effects
                             .into_iter()
-                            .map(|e| Effect {
+                            .enumerate()
+                            .map(|(i, e)| Effect {
+                                rub_index: i as i32,
                                 tile_id,
                                 until_finish: e.until_finish,
                                 effect_archetype_handle: e.effect_archetype_handle,
@@ -241,7 +244,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             until_finish: c.until_finish,
                             tile_id,
                         }),
-                        queued_xp_bonus: 0,
                     }),
                 })
             }

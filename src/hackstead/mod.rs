@@ -77,18 +77,6 @@ pub async fn db_get_profile(pool: &PgPool, id: &UserId) -> sqlx::Result<hackstea
     }
 }
 
-pub async fn uuid_or_lookup(pool: &PgPool, id: &UserId) -> sqlx::Result<uuid::Uuid> {
-    match id {
-        UserId::Uuid(uuid) | UserId::Both { uuid, .. } => Ok(*uuid),
-        UserId::Slack(slack) => {
-            sqlx::query!("SELECT steader_id FROM steaders WHERE slack_id = $1", slack)
-                .fetch_one(pool)
-                .await
-                .map(|record| record.steader_id)
-        }
-    }
-}
-
 pub async fn db_get_hackstead(pool: &PgPool, id: &UserId) -> sqlx::Result<hackstead::Hackstead> {
     trace!("getting hackstead from db for {:#?}", id);
 

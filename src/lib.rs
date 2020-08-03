@@ -5,14 +5,17 @@ use derive_more::Display;
 mod hackstead;
 #[allow(unused_imports)]
 pub(crate) use hackstead::{item, plant, tile};
+mod wormhole;
+pub use wormhole::{establish_wormhole, WormholeServer};
 
 pub use hackstead::db_insert_hackstead;
 pub use hackstead::{get_hackstead, new_hackstead, remove_hackstead};
 pub use hackstead::{
     item::{hatch_item, spawn_items, transfer_items},
-    plant::{apply_plant, new_plant, remove_plant},
+    plant::{new_plant, remove_plant, rub_plant},
     tile::new_tile,
 };
+use hcor::UserId;
 
 pub async fn db_conn() -> Result<sqlx::PgConnection, ServiceError> {
     use sqlx::Connect;
@@ -89,6 +92,7 @@ impl ServiceError {
 
 impl ResponseError for ServiceError {
     fn error_response(&self) -> HttpResponse {
+        log::error!("{}", self);
         match self {
             ServiceError::InternalServerError => {
                 HttpResponse::InternalServerError().body("Internal Server Error. Try again later.")
@@ -113,5 +117,17 @@ impl From<sqlx::Error> for ServiceError {
 impl From<hcor::ConfigError> for ServiceError {
     fn from(e: hcor::ConfigError) -> ServiceError {
         ServiceError::bad_request(e)
+    }
+}
+
+pub async fn uuid_or_lookup(pool: &sqlx::PgPool, id: &UserId) -> sqlx::Result<uuid::Uuid> {
+    match id {
+        UserId::Uuid(uuid) | UserId::Both { uuid, .. } => Ok(*uuid),
+        UserId::Slack(slack) => {
+            sqlx::query!("SELECT steader_id FROM steaders WHERE slack_id = $1", slack)
+                .fetch_one(pool)
+                .await
+                .map(|record| record.steader_id)
+        }
     }
 }

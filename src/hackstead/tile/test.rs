@@ -8,15 +8,15 @@ async fn test_new_tile() -> hcor::ClientResult<()> {
     drop(pretty_env_logger::try_init());
 
     let requires_xp_arch = hcor::CONFIG
-        .land_unlocking_item_archetypes()
-        .find(|(_, ul)| ul.requires_xp)
-        .map(|(a, _)| a)
-        .expect("no items in config that unlock land and require xp to do so?");
+        .land_unlockers()
+        .find(|(ul, _)| ul.requires_xp)
+        .expect("no items in config that unlock land and require xp to do so?")
+        .1;
     let no_requires_xp_arch = hcor::CONFIG
-        .land_unlocking_item_archetypes()
-        .find(|(_, ul)| !ul.requires_xp)
-        .map(|(a, _)| a)
-        .expect("no items in config that unlock land and don't require xp to do so?");
+        .land_unlockers()
+        .find(|(ul, _)| !ul.requires_xp)
+        .expect("no items in config that unlock land and don't require xp to do so?")
+        .1;
     let non_land_redeemable_arch = hcor::CONFIG
         .possession_archetypes
         .iter()

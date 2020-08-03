@@ -1,7 +1,7 @@
 use crate::ServiceError;
 use actix_web::{post, web, HttpResponse};
 use hcor::plant::{
-    self, Plant, PlantApplicationRequest, PlantBase, PlantCreationRequest, PlantRemovalRequest,
+    self, Plant, PlantBase, PlantCreationRequest, PlantRemovalRequest, PlantRubRequest,
 };
 use log::*;
 use sqlx::{PgConnection, PgPool};
@@ -32,7 +32,7 @@ pub async fn db_extend_plant_base(pool: &PgPool, base: PlantBase) -> sqlx::Resul
         .fetch_one(pool),
         sqlx::query_as!(
             plant::Effect,
-            "SELECT * FROM plant_effects WHERE tile_id = $1",
+            "SELECT * FROM plant_effects WHERE tile_id = $1 ORDER BY rub_index",
             base.tile_id
         )
         .fetch_all(pool)
@@ -42,7 +42,6 @@ pub async fn db_extend_plant_base(pool: &PgPool, base: PlantBase) -> sqlx::Resul
         base,
         craft: craft.ok(),
         effects: effects?,
-        queued_xp_bonus: 0,
     })
 }
 
@@ -54,13 +53,15 @@ pub async fn db_insert_plant(conn: &mut PgConnection, p: Plant) -> sqlx::Result<
             , nickname\
             , until_yield\
             , archetype_handle\
+            , lifetime_effect_count\
             ) \
-        VALUES ( $1, $2, $3, $4, $5 )",
+        VALUES ( $1, $2, $3, $4, $5, $6 )",
         p.base.tile_id,
         p.base.xp,
         p.base.nickname,
         p.base.until_yield,
-        p.base.archetype_handle
+        p.base.archetype_handle,
+        p.base.lifetime_effect_count
     )
     .execute(&mut *conn)
     .await?;
@@ -95,15 +96,25 @@ pub async fn db_insert_effect(conn: &mut PgConnection, e: plant::Effect) -> sqlx
             , until_finish\
             , item_archetype_handle\
             , effect_archetype_handle\
+            , rub_index\
             ) \
-        VALUES ( $1, $2, $3, $4 )",
+        VALUES ( $1, $2, $3, $4, $5 )",
         e.tile_id,
         e.until_finish,
         e.item_archetype_handle,
-        e.effect_archetype_handle
+        e.effect_archetype_handle,
+        e.rub_index
     )
     .execute(&mut *conn)
     .await?;
+
+    Ok(())
+}
+
+pub async fn db_remove_plant(conn: &mut PgConnection, tile_id: Uuid) -> sqlx::Result<()> {
+    sqlx::query!("DELETE FROM plants * WHERE tile_id = $1", tile_id)
+        .execute(&mut *conn)
+        .await?;
 
     Ok(())
 }
@@ -151,59 +162,61 @@ pub async fn new_plant(
 }
 
 #[post("/plant/rub")]
-pub async fn apply_plant(
+pub async fn rub_plant(
     db: web::Data<PgPool>,
-    req: web::Json<PlantApplicationRequest>,
+    req: web::Json<PlantRubRequest>,
 ) -> Result<HttpResponse, ServiceError> {
     use crate::item::{db_get_item, db_remove_item};
 
-    debug!("servicing apply_plant request");
+    debug!("servicing rub_plant request");
 
     let mut tx = db.begin().await?;
 
     // fetch and verify the seed item
-    let item_id = req.applicable_item_id;
+    let item_id = req.rub_item_id;
     let item = db_get_item(&db, item_id).await?;
     db_remove_item(&mut tx, item_id).await?;
-    let plant_application = item.plant_application.as_ref().ok_or_else(|| {
-        ServiceError::bad_request(format!(
-            "item {}[{}] is not configured to be applied to a plant",
-            item.name, item.base.archetype_handle,
-        ))
-    })?;
 
-    // fetch and verify the tile the plant to apply to
+    // fetch and verify the tile the plant to rub onto
     let tile_id = req.tile_id;
-    let tile = super::db_get_tile(&db, tile_id).await?;
-    let plant = tile.plant.as_ref().ok_or_else(|| {
+    let mut tile = super::db_get_tile(&db, tile_id).await?;
+    let plant = tile.plant.as_mut().ok_or_else(|| {
         ServiceError::bad_request(format!(
-            "can't apply {}[{}]; tile {} is not occupied by a plant.",
+            "can't rub {}[{}]; tile {} is not occupied by a plant.",
             item.name, item.base.archetype_handle, tile_id
         ))
     })?;
+    let plant_name = plant.name.clone();
 
-    // find out which effects are relevant and apply them, if any are.
-    let mut effect_archetypes = plant_application
-        .effects
-        .iter()
-        .enumerate()
-        .filter(|(_, e)| e.for_plants.allows(&plant.name))
-        .peekable();
+    // find out which effects are relevant and rub them on, if any are.
+    let mut effect_archetypes = item.rub_effects_for_plant_indexed(&plant_name).peekable();
     if effect_archetypes.peek().is_none() {
         return Err(ServiceError::bad_request(format!(
-            "can't apply {}[{}]; this item would have no effect to the {}[{}] plant living on tile {}.",
-            item.name, item.base.archetype_handle,
-            plant.name, plant.base.archetype_handle, tile_id, 
+            "can't rub {}[{}]; \
+                rubbing this item on the {}[{}] plant \
+                living on tile {} would have no effect on it.",
+            item.name, item.base.archetype_handle, plant.name, plant.base.archetype_handle, tile_id,
         )));
     }
-    let mut effects: Vec<plant::Effect> = Vec::with_capacity(plant_application.effects.len());
+    let mut effects: Vec<plant::Effect> = Vec::with_capacity(item.plant_rub_effects.len());
     for (i, a) in effect_archetypes {
         let e = plant::Effect {
+            rub_index: plant.next_effect_index(),
             tile_id,
             until_finish: a.duration,
             item_archetype_handle: item.base.archetype_handle,
             effect_archetype_handle: i as hcor::config::ArchetypeHandle,
         };
+
+        sqlx::query!(
+            "UPDATE plants \
+                SET lifetime_effect_count = lifetime_effect_count + 1 \
+                WHERE tile_id = $1",
+            tile_id,
+        )
+        .execute(&mut tx)
+        .await?;
+
         db_insert_effect(&mut tx, e.clone()).await?;
         effects.push(e);
     }
@@ -221,9 +234,7 @@ pub async fn remove_plant(
 
     let PlantRemovalRequest { tile_id } = req.clone();
     let plant: Plant = db_get_plant(&db, tile_id).await?;
-    sqlx::query!("DELETE FROM plants * WHERE tile_id = $1", tile_id)
-        .execute(&**db)
-        .await?;
+    db_remove_plant(&mut *db.acquire().await?, tile_id).await?;
 
     debug!(":( removed plant: {:#?}", plant);
 
