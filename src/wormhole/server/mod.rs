@@ -73,7 +73,7 @@ impl Server {
 
     /// Send note to all users
     fn broadcast_note(&self, note: Note) {
-        for (_, addr) in &self.sessions {
+        for addr in self.sessions.values() {
             addr.do_send(session::SendNote(note.clone()));
         }
     }

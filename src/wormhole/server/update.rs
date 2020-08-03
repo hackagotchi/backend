@@ -30,7 +30,7 @@ async fn update_plant(
     {
         if uf <= 0.0 {
             sender.send(Note::PlantEffectFinish {
-                effect: e.clone(),
+                effect: *e,
                 tile_id: plant.tile_id(),
             });
         } else {

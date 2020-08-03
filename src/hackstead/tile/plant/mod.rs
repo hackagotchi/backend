@@ -217,7 +217,7 @@ pub async fn rub_plant(
         .execute(&mut tx)
         .await?;
 
-        db_insert_effect(&mut tx, e.clone()).await?;
+        db_insert_effect(&mut tx, e).await?;
         effects.push(e);
     }
     tx.commit().await?;

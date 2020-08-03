@@ -82,12 +82,10 @@ pub async fn db_get_hackstead(pool: &PgPool, id: &UserId) -> sqlx::Result<hackst
 
     let profile = db_get_profile(pool, id).await?;
     trace!("got profile: {:#?}", profile);
+    let inventory = item::db_get_inventory(pool, profile.steader_id).await?;
+    let land = tile::db_get_land(pool, profile.steader_id).await?;
 
-    Ok(hackstead::Hackstead {
-        inventory: item::db_get_inventory(pool, profile.steader_id).await?,
-        land: tile::db_get_land(pool, profile.steader_id).await?,
-        profile,
-    })
+    Ok(hackstead::Hackstead { inventory, land, profile })
 }
 
 #[post("/hackstead/spy")]
