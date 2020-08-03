@@ -1,5 +1,5 @@
 #[actix_rt::test]
-async fn test_get_hackstead() -> hcor::ClientResult<()> {
+async fn get_hackstead() -> hcor::ClientResult<()> {
     use hcor::Hackstead;
 
     // attempt to establish logging, do nothing if it fails

@@ -4,6 +4,9 @@ use super::SenderBundle;
 use crate::hackstead::db_get_hackstead;
 use hcor::{IdentifiesUser, Note, Plant};
 
+#[cfg(all(test, feature = "hcor_client"))]
+mod test;
+
 pub(super) async fn update_stead(db: PgPool, sender: SenderBundle) -> sqlx::Result<()> {
     let steader_id = sender.uuid;
     let mut tx = db.begin().await?;

@@ -7,7 +7,7 @@ const ITEM_SPAWN_COUNT: usize = 10;
 #[actix_rt::test]
 /// NOTE: requires that at least one item exists in the config!
 /// relies on item/spawn!
-async fn test_spawn_item() -> hcor::ClientResult<()> {
+async fn spawn_item() -> hcor::ClientResult<()> {
     // attempt to establish logging, do nothing if it fails
     // (it probably fails because it's already been established in another test)
     drop(pretty_env_logger::try_init());
@@ -56,7 +56,7 @@ async fn test_spawn_item() -> hcor::ClientResult<()> {
 #[actix_rt::test]
 /// NOTE: requires that at least one item exists in the config!
 /// relies on item/spawn!
-async fn test_transfer_item() -> hcor::ClientResult<()> {
+async fn transfer_item() -> hcor::ClientResult<()> {
     // attempt to establish logging, do nothing if it fails
     // (it probably fails because it's already been established in another test)
     drop(pretty_env_logger::try_init());
@@ -195,7 +195,7 @@ async fn test_transfer_item() -> hcor::ClientResult<()> {
 #[actix_rt::test]
 /// NOTE: requires that hatchable and unhatchable items exist in the config!
 /// relies on item/spawn!
-async fn test_hatch_item() -> hcor::ClientResult<()> {
+async fn hatch_item() -> hcor::ClientResult<()> {
     // attempt to establish logging, do nothing if it fails
     // (it probably fails because it's already been established in another test)
     drop(pretty_env_logger::try_init());

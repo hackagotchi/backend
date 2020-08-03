@@ -1,6 +1,6 @@
 #[actix_rt::test]
 /// NOTE: relies on item/spawn!
-async fn test_new_tile() -> hcor::ClientResult<()> {
+async fn new_tile() -> hcor::ClientResult<()> {
     use hcor::Hackstead;
 
     // attempt to establish logging, do nothing if it fails
