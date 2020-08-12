@@ -1,144 +1,93 @@
-use crate::ServiceError;
-use actix_web::{post, web, HttpResponse};
-use hcor::{
-    hackstead::{self, NewHacksteadRequest},
-    Hackstead, UserId,
+use crate::{
+    wormhole::{self, server},
+    ServiceError,
 };
+use actix_web::{post, web, HttpResponse};
+use hcor::{hackstead::NewHacksteadRequest, Hackstead, IdentifiesSteader, IdentifiesUser, UserId};
 use log::*;
-use sqlx::{PgConnection, PgPool};
+use std::fs;
 
-pub(crate) mod item;
 #[cfg(all(test, feature = "hcor_client"))]
 mod test;
-pub(crate) mod tile;
-pub(crate) use tile::plant;
 
-pub async fn db_insert_hackstead(conn: &mut PgConnection, hs: Hackstead) -> sqlx::Result<()> {
-    sqlx::query!(
-        "INSERT INTO steaders\
-            ( steader_id\
-            , slack_id\
-            , xp\
-            , extra_land_plot_count\
-            , joined\
-            , last_active\
-            , last_farm\
-            ) \
-        VALUES ( $1, $2, $3, $4, $5, $6, $7 )",
-        hs.profile.steader_id,
-        hs.profile.slack_id,
-        hs.profile.xp as i32,
-        hs.profile.extra_land_plot_count as i32,
-        hs.profile.joined,
-        hs.profile.last_active,
-        hs.profile.last_farm,
-    )
-    .execute(&mut *conn)
-    .await?;
-
-    for i in hs.inventory {
-        item::db_insert_item(&mut *conn, i).await?;
+fn user_path(iu: impl IdentifiesUser) -> String {
+    match iu.user_id() {
+        UserId::Uuid(uuid) | UserId::Both { uuid, .. } => stead_path(uuid),
+        UserId::Slack(slack_id) => slack_path(&slack_id),
     }
-    for t in hs.land {
-        tile::db_insert_tile(&mut *conn, t).await?;
+}
+
+fn stead_path(is: impl IdentifiesSteader) -> String {
+    format!("stead/{}.json", is.steader_id())
+}
+
+fn slack_path(slack: &str) -> String {
+    format!("slack/{}.json", slack)
+}
+
+pub fn fs_get_stead(user_id: impl IdentifiesUser) -> Result<Hackstead, ServiceError> {
+    Ok(serde_json::from_str(&fs::read_to_string(user_path(
+        user_id,
+    ))?)?)
+}
+
+pub fn fs_put_stead(hs: &Hackstead) -> Result<(), ServiceError> {
+    let stead_path = stead_path(hs);
+    fs::write(&stead_path, serde_json::to_string(hs)?)?;
+
+    if let Some(s) = hs.profile.slack_id.as_ref() {
+        fs::hard_link(&stead_path, &slack_path(s))?;
     }
 
     Ok(())
-}
-
-pub async fn db_insert_hackstead_transactional(pool: &PgPool, hs: Hackstead) -> sqlx::Result<()> {
-    let mut tx = pool.begin().await?;
-    db_insert_hackstead(&mut tx, hs).await?;
-    tx.commit().await?;
-
-    Ok(())
-}
-
-pub async fn db_get_profile(pool: &PgPool, id: &UserId) -> sqlx::Result<hackstead::Profile> {
-    match id {
-        UserId::Uuid(uuid) | UserId::Both { uuid, .. } => {
-            sqlx::query_as!(
-                hackstead::Profile,
-                "SELECT * FROM steaders WHERE steader_id = $1",
-                *uuid
-            )
-            .fetch_one(pool)
-            .await
-        }
-        UserId::Slack(slack) => {
-            sqlx::query_as!(
-                hackstead::Profile,
-                "SELECT * FROM steaders WHERE slack_id = $1",
-                slack
-            )
-            .fetch_one(pool)
-            .await
-        }
-    }
-}
-
-pub async fn db_get_hackstead(pool: &PgPool, id: &UserId) -> sqlx::Result<hackstead::Hackstead> {
-    trace!("getting hackstead from db for {:#?}", id);
-
-    let profile = db_get_profile(pool, id).await?;
-    trace!("got profile: {:#?}", profile);
-    let inventory = item::db_get_inventory(pool, profile.steader_id).await?;
-    let land = tile::db_get_land(pool, profile.steader_id).await?;
-
-    Ok(hackstead::Hackstead { inventory, land, profile })
 }
 
 #[post("/hackstead/spy")]
 /// Returns a user's hackstead, complete with Profile, Inventory, and Tiles.
 pub async fn get_hackstead(
-    db: web::Data<PgPool>,
     user: web::Json<UserId>,
+    srv: web::Data<actix::Addr<wormhole::Server>>,
 ) -> Result<HttpResponse, ServiceError> {
     debug!("servicing get_hackstead request");
 
-    let stead: Hackstead = db_get_hackstead(&db, &*user).await?;
-    trace!("got hackstead: {:#?}", stead);
+    let mut stead = fs_get_stead(&*user)?;
+    trace!("got hackstead from fs: {:#?}", stead);
+
+    // if there's already a Session up for this user, that Session will have a much fresher
+    // hackstead than we just read off of the fs.
+    if let Some(ses) = srv.send(server::GetSession::new(&stead)).await? {
+        stead = ses.send(wormhole::session::GetStead).await?;
+        trace!("got fresh hackstead from session: {:#?}", stead);
+    }
 
     Ok(HttpResponse::Ok().json(stead))
 }
 
 #[post("/hackstead/summon")]
 pub async fn new_hackstead(
-    db: web::Data<PgPool>,
     user: web::Json<NewHacksteadRequest>,
 ) -> Result<HttpResponse, ServiceError> {
     debug!("servicing new_hackstead request");
 
-    let stead = Hackstead::new_user(user.slack_id.as_ref());
-    db_insert_hackstead_transactional(&db, stead.clone()).await?;
-    let user_id = UserId::Uuid(stead.profile.steader_id);
+    let slack = user.slack_id.as_ref();
+    let stead = Hackstead::new_user(slack);
 
-    // get a fresh stead because SQL likes to give the timestamps a higher resolution than they are
-    // when they go in.
-    Ok(HttpResponse::Created().json(&db_get_hackstead(&db, &user_id).await?))
+    fs_put_stead(&stead)?;
+
+    Ok(HttpResponse::Created().json(&stead))
 }
 
 #[post("/hackstead/slaughter")]
-pub async fn remove_hackstead(
-    db: web::Data<PgPool>,
-    user: web::Json<UserId>,
-) -> Result<HttpResponse, ServiceError> {
+pub async fn remove_hackstead(user: web::Json<UserId>) -> Result<HttpResponse, ServiceError> {
     debug!("servicing remove_hackstead request");
 
-    let stead: Hackstead = db_get_hackstead(&db, &*user).await?;
-    match &*user {
-        UserId::Uuid(uuid) | UserId::Both { uuid, .. } => {
-            sqlx::query!("DELETE FROM steaders * WHERE steader_id = $1", *uuid)
-                .execute(&**db)
-                .await
-        }
-        UserId::Slack(slack_id) => {
-            sqlx::query!("DELETE FROM steaders * WHERE slack_id = $1", slack_id)
-                .execute(&**db)
-                .await
-        }
-    }?;
-    debug!(":( removed hackstead: {:#?}", stead);
+    let stead = fs_get_stead(&*user)?;
+    debug!(":( removing hackstead: {:#?}", stead);
+
+    fs::remove_file(&stead_path(stead.profile.steader_id))?;
+    if let Some(slack) = stead.profile.slack_id.as_ref() {
+        fs::remove_file(&slack_path(slack))?;
+    }
 
     Ok(HttpResponse::Ok().json(stead))
 }

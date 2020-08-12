@@ -1,6 +1,6 @@
 //! Dumps a CSV file of the old dynamodb format into the db.
 //! input CSVs are assumed to be generated with this tool: https://pypi.org/project/export-dynamodb/
-use hcor::item;
+use hcor::{item, ItemId, TileId};
 use serde::{Deserialize, Serialize};
 
 /* To make the errors bearable.
@@ -143,26 +143,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 hs.profile.joined = parse_date_time(joined);
                 hs.profile.last_active = parse_date_time(last_active);
                 hs.profile.last_farm = parse_date_time(last_farm);
-                hs.profile.xp = r.xp.expect("profile no xp") as i32;
+                hs.profile.xp = r.xp.expect("profile no xp") as usize;
                 *found_profile = true;
             }
             1 | 2 => {
                 let archetype_handle = r.archetype_handle.expect("item no archetype");
-                let item_id = uuid::Uuid::parse_str(&r.id).expect("item id not uuid");
+                let item_id = ItemId(uuid::Uuid::parse_str(&r.id).expect("item id not uuid"));
                 hs.inventory.push(item::Item {
-                    base: item::ItemBase {
-                        item_id,
-                        owner_id: hs.profile.steader_id,
-                        archetype_handle: archetype_handle as i32,
-                    },
+                    item_id,
+                    owner_id: hs.profile.steader_id,
+                    archetype_handle: archetype_handle as usize,
                     gotchi: if let (Some(nickname), Some(_)) = (r.nickname, r.harvest_log) {
-                        Some(item::Gotchi { nickname, item_id })
+                        Some(item::Gotchi { nickname })
                     } else {
                         None
                     },
                     ownership_log: vec![item::LoggedOwner {
                         logged_owner_id: hs.profile.steader_id,
-                        item_id,
                         acquisition: item::Acquisition::Trade,
                         owner_index: 0,
                     }],
@@ -173,26 +170,26 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
                 #[derive(serde::Serialize, serde::Deserialize)]
                 struct OldPlant {
-                    pub xp: i32,
-                    pub until_yield: f64,
+                    pub xp: usize,
+                    pub until_yield: f32,
                     pub craft: Option<OldCraft>,
                     #[serde(default)]
                     pub effects: Vec<OldEffect>,
-                    pub archetype_handle: i32,
+                    pub archetype_handle: usize,
                     #[serde(default)]
-                    pub queued_xp_bonus: i32,
+                    pub queued_xp_bonus: usize,
                 }
                 #[derive(serde::Serialize, serde::Deserialize)]
                 pub struct OldCraft {
-                    pub until_finish: f64,
+                    pub until_finish: f32,
                     #[serde(alias = "makes")]
-                    pub recipe_archetype_handle: i32,
+                    pub recipe_archetype_handle: usize,
                 }
                 #[derive(serde::Serialize, serde::Deserialize)]
                 pub struct OldEffect {
-                    pub until_finish: Option<f64>,
-                    pub item_archetype_handle: i32,
-                    pub effect_archetype_handle: i32,
+                    pub until_finish: Option<f32>,
+                    pub item_archetype_handle: usize,
+                    pub effect_archetype_handle: usize,
                 }
                 impl std::ops::Deref for OldPlant {
                     type Target = hcor::config::PlantArchetype;
@@ -206,43 +203,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
 
                 let acquired = r.acquired.expect("tiles need acquired dates");
-                let tile_id = uuid::Uuid::parse_str(&r.id).expect("tile id not uuid");
+                let tile_id = TileId(uuid::Uuid::parse_str(&r.id).expect("tile id not uuid"));
                 let p: Option<OldPlant> = r
                     .plant
                     .as_ref()
                     .map(|p| as_json(p).expect("bad plant json"));
 
                 hs.land.push(hcor::Tile {
-                    base: hcor::tile::TileBase {
-                        acquired: parse_date_time(acquired),
-                        tile_id,
-                        owner_id: hs.profile.steader_id,
-                    },
+                    acquired: parse_date_time(acquired),
+                    tile_id,
+                    owner_id: hs.profile.steader_id,
                     plant: p.map(|p| hcor::Plant {
-                        base: hcor::plant::PlantBase {
-                            xp: p.xp,
-                            until_yield: p.until_yield,
-                            archetype_handle: p.archetype_handle,
-                            nickname: p.name.clone(),
-                            tile_id,
-                            lifetime_effect_count: p.effects.len() as i32,
-                        },
+                        xp: p.xp,
+                        owner_id: hs.profile.steader_id,
+                        archetype_handle: p.archetype_handle,
+                        nickname: p.name.clone(),
+                        tile_id,
+                        lifetime_rubs: p.effects.len(),
                         effects: p
                             .effects
                             .into_iter()
-                            .enumerate()
-                            .map(|(i, e)| Effect {
-                                rub_index: i as i32,
-                                tile_id,
-                                until_finish: e.until_finish,
+                            .map(|e| Effect {
+                                effect_id: hcor::plant::EffectId(uuid::Uuid::new_v4()),
                                 effect_archetype_handle: e.effect_archetype_handle,
                                 item_archetype_handle: e.item_archetype_handle,
                             })
                             .collect(),
                         craft: p.craft.map(|c| Craft {
                             recipe_archetype_handle: c.recipe_archetype_handle,
-                            until_finish: c.until_finish,
-                            tile_id,
                         }),
                     }),
                 })
@@ -251,9 +239,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    let pool = backend::db_pool().await.unwrap();
     let len = hacksteads.len();
-    let mut tx = pool.begin().await?;
     for (i, (id, (hs, profile))) in hacksteads.into_iter().enumerate() {
         if profile {
             println!(
@@ -262,14 +248,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 len,
                 (i as f32 / len as f32) * 100.0
             );
-            backend::db_insert_hackstead(&mut tx, hs)
-                .await
-                .unwrap_or_else(|e| panic!("rolling back migration: {}", e));
+            backend::fs_put_stead(&hs)?;
         } else {
             println!("ignoring {}", id);
         }
     }
-    tx.commit().await?;
 
     Ok(())
 }

@@ -3,23 +3,18 @@
 
 use std::collections::HashMap;
 
-use actix::{Actor, Addr, AsyncContext, Context, Handler, Message};
-use sqlx::PgPool;
-use uuid::Uuid;
+use actix::{Actor, Addr, Context, Handler, Message};
 
-use super::{
-    session::{self, Session},
-    SenderBundle,
-};
-use hcor::{wormhole::Note, UPDATE_INTERVAL};
+use super::session::{self, Session};
+use hcor::{IdentifiesSteader, Note, SteaderId};
 
-mod update;
-use update::update_stead;
+mod throw;
+pub use throw::ThrowItems;
 
 /// New session is created
 #[derive(Message)]
 #[rtype(result = "()")]
-pub(super) struct Connect(pub(super) Uuid, pub(super) Addr<Session>);
+pub struct Connect(pub SteaderId, pub Addr<Session>);
 
 /// When a client connects, just record who they are associated with
 /// the `addr` we can use to send messages to their Session actor.
@@ -34,7 +29,7 @@ impl Handler<Connect> for Server {
 /// Session disconnected
 #[derive(Message)]
 #[rtype(result = "()")]
-pub(super) struct Disconnect(pub(super) Uuid);
+pub struct Disconnect(pub SteaderId);
 
 impl Handler<Disconnect> for Server {
     type Result = ();
@@ -47,7 +42,7 @@ impl Handler<Disconnect> for Server {
 /// Send note to all users
 #[derive(Message)]
 #[rtype(result = "()")]
-pub(super) struct BroadcastNote(pub(super) Note);
+pub struct BroadcastNote(pub Note);
 
 impl Handler<BroadcastNote> for Server {
     type Result = ();
@@ -57,17 +52,34 @@ impl Handler<BroadcastNote> for Server {
     }
 }
 
+/// Get the Session associated with a user, if there is one currently registered for them.
+#[derive(Message)]
+#[rtype(result = "Option<Addr<Session>>")]
+pub struct GetSession(pub SteaderId);
+
+impl GetSession {
+    pub fn new(iu: impl IdentifiesSteader) -> Self {
+        Self(iu.steader_id())
+    }
+}
+
+impl Handler<GetSession> for Server {
+    type Result = Option<Addr<Session>>;
+
+    fn handle(&mut self, GetSession(sr): GetSession, _: &mut Context<Self>) -> Self::Result {
+        self.sessions.get(&sr).cloned()
+    }
+}
+
 /// `Server` manages connected clients and is responsible for dispatching Notes to them.
 pub struct Server {
-    sessions: HashMap<Uuid, Addr<Session>>,
-    db: PgPool,
+    sessions: HashMap<SteaderId, Addr<Session>>,
 }
 
 impl Server {
-    pub fn new(db: PgPool) -> Self {
+    pub fn new() -> Self {
         Self {
             sessions: HashMap::new(),
-            db,
         }
     }
 
@@ -77,39 +89,9 @@ impl Server {
             addr.do_send(session::SendNote(note.clone()));
         }
     }
-
-    fn update(&mut self, ctx: &mut Context<Self>) {
-        use actix::fut::WrapFuture;
-        use futures::FutureExt;
-
-        ctx.run_interval(UPDATE_INTERVAL, |act, ctx| {
-            for (uuid, send) in act.sessions.clone() {
-                ctx.wait(
-                    update_stead(
-                        act.db.clone(),
-                        SenderBundle {
-                            uuid,
-                            send: send.recipient(),
-                            broadcast: ctx.address().recipient(),
-                        },
-                    )
-                    .map(|res| {
-                        if let Err(e) = res {
-                            log::error!("error updating hackstead: {}", e);
-                        }
-                    })
-                    .into_actor(act),
-                );
-            }
-        });
-    }
 }
 
 impl Actor for Server {
     /// Simple Context: we just need ability to communicate with other actors.
     type Context = Context<Self>;
-
-    fn started(&mut self, ctx: &mut Self::Context) {
-        self.update(ctx)
-    }
 }

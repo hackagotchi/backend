@@ -30,5 +30,19 @@ async fn get_hackstead() -> hcor::ClientResult<()> {
         Ok(_) => panic!("killing bob a second time worked somehow"),
     }
 
+    // even if we cheat and use the API directly
+    match hcor::client_internal::request::<Hackstead, _>(
+        "hackstead/slaughter",
+        &bobstead.profile.steader_id,
+    )
+    .await
+    {
+        Err(e) => log::info!(
+            "received error as expected killing bob a second time with API: {}",
+            e
+        ),
+        Ok(_) => panic!("killing bob a second time with the API worked somehow"),
+    }
+
     Ok(())
 }

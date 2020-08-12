@@ -1,16 +1,14 @@
-use actix::{Addr, Recipient};
+use actix::Addr;
 use actix_web::web;
 use actix_web_actors::ws;
-use uuid::Uuid;
 
-use hcor::wormhole::{EstablishWormholeRequest, Note};
+use hcor::wormhole::EstablishWormholeRequest;
 
-mod session;
+pub mod session;
 use session::Session;
 
 pub mod server;
-pub use server::Server as WormholeServer;
-use server::Server;
+pub use server::Server;
 
 /// This route facilitates establishing a connection to the Wormhole,
 /// through which clients can receive messages about their hackstead.
@@ -18,9 +16,8 @@ pub async fn establish_wormhole(
     req: actix_web::HttpRequest,
     stream: web::Payload,
     srv: web::Data<Addr<Server>>,
-    db: web::Data<sqlx::PgPool>,
 ) -> Result<actix_web::HttpResponse, actix_web::Error> {
-    use crate::{uuid_or_lookup, ServiceError};
+    use crate::ServiceError;
     log::debug!("servicing establish_wormhole request");
 
     let r_header = match req.headers().get("EstablishWormholeRequest").map(|h| h.to_str()) {
@@ -33,33 +30,13 @@ pub async fn establish_wormhole(
             "please supply an EstablishWormholeRequest header which contains a valid UserId as JSON."
         )),
     }?;
-    let uuid = match serde_json::from_str(r_header) {
-        Ok(EstablishWormholeRequest { user_id }) => {
-            uuid_or_lookup(&db, &user_id).await.map_err(|e| e.into())
-        }
+    let hs = match serde_json::from_str(r_header) {
+        Ok(EstablishWormholeRequest { user_id }) => crate::hackstead::fs_get_stead(&user_id),
         Err(e) => Err(ServiceError::bad_request(format!(
             "couldn't parse EstablishWormholeRequest header: {}",
             e
         ))),
     }?;
 
-    ws::start(Session::new(uuid, &*srv), &req, stream)
-}
-
-/// Contains addresses to Actors which allow one to send messages to all connected clients, or to
-/// a specific client. It also contains a Uuid indicating which client that this Bundle gives you
-/// direct access to.
-struct SenderBundle {
-    broadcast: Recipient<server::BroadcastNote>,
-    send: Recipient<session::SendNote>,
-    uuid: Uuid,
-}
-impl SenderBundle {
-    fn broadcast(&self, note: Note) {
-        drop(self.broadcast.do_send(server::BroadcastNote(note)))
-    }
-
-    fn send(&self, note: Note) {
-        drop(self.send.do_send(session::SendNote(note)))
-    }
+    ws::start(Session::new(hs, &*srv), &req, stream)
 }

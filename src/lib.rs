@@ -1,75 +1,24 @@
 #![recursion_limit = "256"]
 use actix_web::{error::ResponseError, HttpResponse};
-use derive_more::Display;
+use log::*;
+use std::fmt;
 
 mod hackstead;
-#[allow(unused_imports)]
-pub(crate) use hackstead::{item, plant, tile};
-mod wormhole;
-pub use wormhole::{establish_wormhole, WormholeServer};
-
-pub use hackstead::db_insert_hackstead;
+pub use hackstead::fs_put_stead;
 pub use hackstead::{get_hackstead, new_hackstead, remove_hackstead};
-pub use hackstead::{
-    item::{hatch_item, spawn_items, transfer_items},
-    plant::{new_plant, remove_plant, rub_plant},
-    tile::new_tile,
-};
-use hcor::UserId;
 
-pub async fn db_conn() -> Result<sqlx::PgConnection, ServiceError> {
-    use sqlx::Connect;
+pub mod wormhole;
+pub use wormhole::establish_wormhole;
 
-    sqlx::PgConnection::connect(&std::env::var("DATABASE_URL").map_err(|_| {
-        log::error!("no DATABASE_URL environment variable set");
-        ServiceError::InternalServerError
-    })?)
-    .await
-    .map_err(|e| {
-        log::error!("couldn't make db connection: {}", e);
-        ServiceError::InternalServerError
-    })
-}
-
-#[cfg(not(test))]
-const MIN_DB_CONNECTIONS: u32 = 85;
-#[cfg(not(test))]
-const MAX_DB_CONNECTIONS: u32 = 85;
-#[cfg(test)]
-const MIN_DB_CONNECTIONS: u32 = 1;
-#[cfg(test)]
-const MAX_DB_CONNECTIONS: u32 = 5;
-pub async fn db_pool() -> Result<sqlx::PgPool, ServiceError> {
-    sqlx::PgPool::builder()
-        .min_size(MIN_DB_CONNECTIONS)
-        .max_size(MAX_DB_CONNECTIONS)
-        .build(&std::env::var("DATABASE_URL").map_err(|_| {
-            log::error!("no DATABASE_URL environment variable set");
-            ServiceError::InternalServerError
-        })?)
-        .await
-        .map_err(|e| {
-            log::error!("couldn't make db pool: {}", e);
-            ServiceError::InternalServerError
-        })
-}
-
-#[derive(Debug, Display)]
+#[derive(Debug)]
 /// Hackagotchi's backend API was unable to service you, for any of these reasons.
 pub enum ServiceError {
-    #[display(fmt = "Internal Server Error")]
     /// Something went wrong on our end.
     InternalServerError,
-
-    #[display(fmt = "Bad Request: {}", _0)]
     /// The request you send us was invalid or not usable for any number of reasons.
     BadRequest(String),
-
-    #[display(fmt = "Unauthorized")]
     /// You aren't allowed to do that.
     Unauthorized,
-
-    #[display(fmt = "No data found")]
     /// We don't know anything about what you requested.
     NoData,
 }
@@ -90,9 +39,24 @@ impl ServiceError {
     }
 }
 
+impl fmt::Display for ServiceError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        use ServiceError::*;
+
+        match self {
+            InternalServerError => write!(f, "Internal Server Error"),
+            BadRequest(s) => write!(f, "Bad Request: {}", s),
+            Unauthorized => write!(f, "Unauthorized"),
+            NoData => write!(f, "No data found"),
+        }
+    }
+}
+
+impl std::error::Error for ServiceError {}
+
 impl ResponseError for ServiceError {
     fn error_response(&self) -> HttpResponse {
-        log::error!("{}", self);
+        error!("{}", self);
         match self {
             ServiceError::InternalServerError => {
                 HttpResponse::InternalServerError().body("Internal Server Error. Try again later.")
@@ -104,30 +68,32 @@ impl ResponseError for ServiceError {
     }
 }
 
-impl From<sqlx::Error> for ServiceError {
-    fn from(e: sqlx::Error) -> ServiceError {
-        log::error!("sqlx error: {}", e);
-        match e {
-            sqlx::Error::RowNotFound => ServiceError::bad_request("No such data"),
+impl From<serde_json::Error> for ServiceError {
+    fn from(e: serde_json::Error) -> ServiceError {
+        error!("serde json error: {}", e);
+        ServiceError::InternalServerError
+    }
+}
+
+impl From<std::io::Error> for ServiceError {
+    fn from(e: std::io::Error) -> ServiceError {
+        error!("io error: {}", e);
+        match e.kind() {
+            std::io::ErrorKind::NotFound => ServiceError::NoData,
             _ => ServiceError::InternalServerError,
         }
+    }
+}
+
+impl From<actix::MailboxError> for ServiceError {
+    fn from(e: actix::MailboxError) -> ServiceError {
+        error!("mailbox error: {}", e);
+        ServiceError::InternalServerError
     }
 }
 
 impl From<hcor::ConfigError> for ServiceError {
     fn from(e: hcor::ConfigError) -> ServiceError {
         ServiceError::bad_request(e)
-    }
-}
-
-pub async fn uuid_or_lookup(pool: &sqlx::PgPool, id: &UserId) -> sqlx::Result<uuid::Uuid> {
-    match id {
-        UserId::Uuid(uuid) | UserId::Both { uuid, .. } => Ok(*uuid),
-        UserId::Slack(slack) => {
-            sqlx::query!("SELECT steader_id FROM steaders WHERE slack_id = $1", slack)
-                .fetch_one(pool)
-                .await
-                .map(|record| record.steader_id)
-        }
     }
 }
