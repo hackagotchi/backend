@@ -1,6 +1,6 @@
-use crate::wormhole::{session::{SendNote, SessEditStore, Session}};
+use crate::wormhole::session::{SendNote, SessEditStore, Session};
 use actix::{Addr, Context, Handler, MailboxError, Message, ResponseFuture};
-use hcor::{id, item, Item, ItemId, SteaderId, wormhole::RudeNote::ItemThrowReceipt, Note};
+use hcor::{id, item, wormhole::RudeNote::ItemThrowReceipt, Item, ItemId, Note, SteaderId};
 use std::fmt;
 
 #[derive(Debug)]
@@ -115,10 +115,12 @@ impl Handler<ThrowItems> for super::Server {
 
             tx_hs.submit_stead_edits().await?;
             rx_hs.submit_stead_edits().await?;
-            rx_hs.send_note(Note::Rude(ItemThrowReceipt {
-                from: sender_id,
-                items: items.clone(),
-            })).await?;
+            rx_hs
+                .send_note(Note::Rude(ItemThrowReceipt {
+                    from: sender_id,
+                    items: items.clone(),
+                }))
+                .await?;
             Ok(items.clone())
         })
     }

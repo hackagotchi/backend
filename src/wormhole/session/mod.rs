@@ -268,7 +268,8 @@ impl SessSend {
             server: ses.server.clone(),
         }
     }
-} impl std::ops::Deref for SessSend {
+}
+impl std::ops::Deref for SessSend {
     type Target = SessEditStore;
 
     fn deref(&self) -> &Self::Target {
