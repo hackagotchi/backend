@@ -5,7 +5,7 @@ use actix_web::{web, App, HttpServer};
 async fn main() -> std::io::Result<()> {
     pretty_env_logger::init();
 
-    let wormhole = backend::wormhole::Server::new().start();
+    let wormhole = backend::WormholeServer::new().start();
 
     HttpServer::new(move || {
         App::new()

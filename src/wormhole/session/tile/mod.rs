@@ -61,7 +61,7 @@ pub fn summon(ss: &mut SessSend, item_id: ItemId) -> Result<Tile, Error> {
 mod test {
     #[actix_rt::test]
     /// NOTE: relies on item/spawn!
-    async fn new_tile() -> hcor::ClientResult<()> {
+    async fn summon() -> hcor::ClientResult<()> {
         use hcor::Hackstead;
         use log::*;
 

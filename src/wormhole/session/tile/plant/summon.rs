@@ -78,7 +78,7 @@ pub fn summon(ss: &mut SessSend, tile_id: TileId, item_id: ItemId) -> Result<Pla
 mod test {
     #[actix_rt::test]
     /// NOTE: relies on item/spawn!
-    async fn new_plant() -> hcor::ClientResult<()> {
+    async fn summon() -> hcor::ClientResult<()> {
         use hcor::{Hackstead, Item, Tile};
         use log::*;
 

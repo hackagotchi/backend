@@ -1,5 +1,5 @@
 use actix::Addr;
-use actix_web::web;
+use actix_web::{web, http::HeaderValue};
 use actix_web_actors::ws;
 
 use hcor::wormhole::EstablishWormholeRequest;
@@ -20,9 +20,9 @@ pub async fn establish_wormhole(
     use crate::ServiceError;
     log::debug!("servicing establish_wormhole request");
 
-    let r_header = match req.headers().get("EstablishWormholeRequest").map(|h| h.to_str()) {
+    let r_header = match req.headers().get("EstablishWormholeRequest").map(HeaderValue::to_str) {
         Some(Ok(s)) => Ok(s),
-        Some(Err(e)) => Err(ServiceError::bad_request(format!(
+        Some(Err(e)) => Err(ServiceError::bad_request(&format!(
             "error reading EstablishWormholeRequest: {}",
             e
         ))),
@@ -32,7 +32,7 @@ pub async fn establish_wormhole(
     }?;
     let hs = match serde_json::from_str(r_header) {
         Ok(EstablishWormholeRequest { user_id }) => crate::hackstead::fs_get_stead(&user_id),
-        Err(e) => Err(ServiceError::bad_request(format!(
+        Err(e) => Err(ServiceError::bad_request(&format!(
             "couldn't parse EstablishWormholeRequest header: {}",
             e
         ))),

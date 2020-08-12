@@ -48,7 +48,7 @@ impl Handler<BroadcastNote> for Server {
     type Result = ();
 
     fn handle(&mut self, BroadcastNote(n): BroadcastNote, _: &mut Context<Self>) {
-        self.broadcast_note(n)
+        self.broadcast_note(&n)
     }
 }
 
@@ -72,19 +72,19 @@ impl Handler<GetSession> for Server {
 }
 
 /// `Server` manages connected clients and is responsible for dispatching Notes to them.
+#[derive(Default)]
 pub struct Server {
     sessions: HashMap<SteaderId, Addr<Session>>,
 }
 
 impl Server {
+    #[must_use]
     pub fn new() -> Self {
-        Self {
-            sessions: HashMap::new(),
-        }
+        Self::default()
     }
 
     /// Send note to all users
-    fn broadcast_note(&self, note: Note) {
+    fn broadcast_note(&self, note: &Note) {
         for addr in self.sessions.values() {
             addr.do_send(session::SendNote(note.clone()));
         }

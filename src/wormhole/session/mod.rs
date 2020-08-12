@@ -50,7 +50,7 @@ impl Session {
     /// active and operational, and checking that the client has sent us a similar message recently
     /// to assure that they're still online. If they haven't sent any such message in a certain
     /// amount of time, we drop their connection and their session ends.
-    fn heartbeat(&self, ctx: &mut SessionContext) {
+    fn heartbeat(ctx: &mut SessionContext) {
         ctx.run_interval(HEARTBEAT_INTERVAL, |act, ctx| {
             if Instant::now().duration_since(act.heartbeat) > CLIENT_TIMEOUT {
                 warn!("Websocket Client heartbeat failed, disconnecting!");
@@ -61,6 +61,7 @@ impl Session {
         });
     }
 
+    #[allow(clippy::unused_self)]
     fn tick(&self, ctx: &mut SessionContext) {
         ctx.run_interval(*UPDATE_INTERVAL, |act, ctx| {
             act.ticker.tick(&mut act.hackstead, ctx)
@@ -76,7 +77,7 @@ impl Actor for Session {
     /// Notes.
     fn started(&mut self, ctx: &mut Self::Context) {
         // probably important to kick these off as soon as possible
-        self.heartbeat(ctx);
+        Session::heartbeat(ctx);
         self.tick(ctx);
 
         info!("session begins!");
@@ -152,7 +153,7 @@ impl Handler<StartTimer> for Session {
     }
 }
 
-/// WebSocket message handler
+/// `WebSocket` message handler
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
     fn handle(&mut self, msg: Result<ws::Message, ws::ProtocolError>, ctx: &mut Self::Context) {
         use ws::Message::*;
@@ -253,7 +254,7 @@ impl SessEditStore {
     }
 }
 
-/// Your SessSend is your interface for editing with a user's Session from afar.
+/// Your `SessSend` is your interface for editing with a user's Session from afar.
 /// It has helper methods for scheduling atomic edits for a user's hackstead,
 /// and also exposes the addresses of the user's hackstead and server, so that
 /// you can send them messages dirrectly if need be.

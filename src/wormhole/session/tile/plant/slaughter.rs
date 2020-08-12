@@ -1,7 +1,7 @@
 #[cfg(all(feature = "hcor_client", test))]
 #[actix_rt::test]
 /// NOTE: relies on plant/new, item/spawn!
-async fn plant_remove() -> hcor::ClientResult<()> {
+async fn slaughter() -> hcor::ClientResult<()> {
     use hcor::{Hackstead, Plant, Tile};
     use log::*;
 

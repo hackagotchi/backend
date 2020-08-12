@@ -1,14 +1,31 @@
+//! # API Flow
+//! Hackagotchi's backend uses a combination of HTTP and websockets to communicate with clients.
+//! 
+//! ## Registering a user
+//! 
+
 #![recursion_limit = "256"]
+#![deny(clippy::pedantic)]
+#![allow(clippy::enum_glob_use)]
+#![allow(clippy::many_single_char_names)]
+//#![forbid(missing_docs)]
+#![forbid(unsafe_code)]
+#![forbid(intra_doc_link_resolution_failure)]
 use actix_web::{error::ResponseError, HttpResponse};
 use log::*;
 use std::fmt;
 
+#[cfg(any(feature="csv_migration",feature="webserver"))]
 mod hackstead;
+#[cfg(feature="csv_migration")]
 pub use hackstead::fs_put_stead;
+#[cfg(feature="webserver")]
 pub use hackstead::{get_hackstead, new_hackstead, remove_hackstead};
 
-pub mod wormhole;
-pub use wormhole::establish_wormhole;
+#[cfg(feature="webserver")]
+mod wormhole;
+#[cfg(feature="webserver")]
+pub use wormhole::{establish_wormhole, Server as WormholeServer};
 
 #[derive(Debug)]
 /// Hackagotchi's backend API was unable to service you, for any of these reasons.
@@ -28,13 +45,10 @@ impl ServiceError {
     /// use backend::ServiceError;
     ///
     /// let br = ServiceError::bad_request("you're bad and you should feel bad");
-    /// let is_br = match br {
-    ///     ServiceError::BadRequest(_) => true,
-    ///     _ => false,
-    /// };
+    /// let is_br = matches!(br, ServiceError::BadRequest(_));
     /// assert!(is_br, "ServiceError::bad_request() should always return a BadRequest variant");
     /// ```
-    pub fn bad_request<T: ToString>(t: T) -> Self {
+    pub fn bad_request<T: ToString + ?Sized>(t: &T) -> Self {
         Self::BadRequest(t.to_string())
     }
 }
@@ -94,6 +108,6 @@ impl From<actix::MailboxError> for ServiceError {
 
 impl From<hcor::ConfigError> for ServiceError {
     fn from(e: hcor::ConfigError) -> ServiceError {
-        ServiceError::bad_request(e)
+        ServiceError::bad_request(&e)
     }
 }

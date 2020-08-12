@@ -44,7 +44,7 @@ pub fn spawn(ss: &mut SessSend, item_conf: usize, amount: usize) -> Result<Vec<I
 mod test {
     #[actix_rt::test]
     /// NOTE: requires that at least one item exists in the config!
-    async fn spawn_item() -> hcor::ClientResult<()> {
+    async fn spawn() -> hcor::ClientResult<()> {
         use super::test::{ITEM_ARCHETYPE, ITEM_SPAWN_COUNT};
         use hcor::Hackstead;
         use log::*;

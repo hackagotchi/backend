@@ -41,7 +41,7 @@ pub fn rub(
 ) -> Result<Vec<plant::Effect>, Error> {
     let item = ss.steddit(move |hs| hs.take_item(item_id))?;
     if item.plant_rub_effects.is_empty() {
-        return Err(NoEffect(None, item.clone()));
+        return Err(NoEffect(None, item));
     }
 
     let plant = ss.hackstead.plant(tile_id)?;
@@ -85,7 +85,7 @@ pub fn rub(
 mod test {
     #[actix_rt::test]
     /// NOTE: relies on plant/new, item/spawn!
-    async fn plant_rub() -> hcor::ClientResult<()> {
+    async fn rub() -> hcor::ClientResult<()> {
         use hcor::Hackstead;
 
         // attempt to establish logging, do nothing if it fails

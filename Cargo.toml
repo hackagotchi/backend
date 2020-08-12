@@ -11,6 +11,7 @@ edition = "2018"
 [[bin]]
 path = "./src/main.rs"
 name = "server"
+required-features = [ "webserver" ]
 
 [[bin]]
 path = "./src/from_csv.rs"
@@ -20,6 +21,8 @@ required-features = [ "csv_migration" ]
 [features]
 hcor_client = [ "hcor/client", "hcor/simultaneous_systems" ]
 csv_migration = [ "csv", "regex" ]
+webserver = [ ]
+default = [ "webserver" ]
 
 [dependencies]
 

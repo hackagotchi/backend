@@ -1,5 +1,5 @@
-use crate::wormhole::session::{SendNote, SessEditStore, Session};
-use actix::{Addr, Context, Handler, MailboxError, Message, ResponseFuture};
+use crate::wormhole::session::SessEditStore;
+use actix::{Context, Handler, MailboxError, Message, ResponseFuture};
 use hcor::{id, item, wormhole::RudeNote::ItemThrowReceipt, Item, ItemId, Note, SteaderId};
 use std::fmt;
 
@@ -95,7 +95,7 @@ impl Handler<ThrowItems> for super::Server {
                     .collect::<Result<Vec<Item>, id::NoSuch>>()
             })?;
 
-            for i in items.iter_mut() {
+            for i in &mut items {
                 if i.owner_id != sender_id {
                     return Err(MixedOwnership(i.item_id));
                 }

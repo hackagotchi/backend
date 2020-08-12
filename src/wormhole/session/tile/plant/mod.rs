@@ -10,7 +10,7 @@ use summon::summon;
 mod rub;
 use rub::rub;
 
-mod remove;
+mod slaughter;
 
 pub fn handle_ask(ss: &mut SessSend, ask: PlantAsk) -> AskedNote {
     match ask {

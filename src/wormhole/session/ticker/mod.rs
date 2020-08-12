@@ -40,7 +40,7 @@ impl Ticker {
                 Lifecycle::Perennial { duration } => {
                     let t = self.timers.get_mut(i).unwrap();
                     t.until_finish = duration;
-                    t.clone()
+                    *t
                 }
                 Lifecycle::Annual => self.timers.swap_remove(i),
             };
