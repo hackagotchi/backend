@@ -14,7 +14,9 @@ tasks:
 - nightly: |
     rustup default nightly
     cd backend/
-    cargo build
-    sudo systemctl start mongodb
-    MONGO_URL=mongodb://localhost:27017 cargo test
+    export UPDATES_PER_SECOND=10000
+    export SERVER_URL="https://localhost:8000"
+    cargo b --bin server
+    cargo r --bin server & bg
+    cargo t --all-features
     cargo fmt -- --check
