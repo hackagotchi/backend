@@ -109,12 +109,10 @@ impl Handler<ThrowItems> for super::Server {
 
             rx_hs.inventory.append(&mut items.clone());
 
-            rx_hs
-                .send_note(Note::Rude(ItemThrowReceipt {
-                    from: sender_id,
-                    items: items.clone(),
-                }))
-                .await?;
+            rx_hs.send_note(Note::Rude(ItemThrowReceipt {
+                from: sender_id,
+                items: items.clone(),
+            }));
 
             tx_hs.submit().await?;
             rx_hs.submit().await?;

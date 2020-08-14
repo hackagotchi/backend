@@ -254,26 +254,38 @@ fn strerr<T, E: ToString>(r: Result<T, E>) -> Result<T, String> {
 
 /// A place to store all of your pending edits to a User's Session.
 ///
+/// Note that these edits are "transactional", in that nothing actually changes until `.submit` is
+/// called. This comes in especially handy in the Ask handling, where Asks may fail for any number
+/// of reasons. If sacrificing an item for a tile fails halfway through, you don't want users to
+/// still lose their item, which is why `SessSend`s are only submitted if ask handlers return
+/// `Ok(_)` variants.
+///
 /// Your `SessSend` is your interface for editing with a user's Session from afar.
-/// It has helper methods for scheduling atomic edits for a user's hackstead,
+/// It has helper methods for scheduling transactional edits for a user's hackstead,
 /// and also exposes the addresses of the user's hackstead and server, so that
-/// you can send them messages dirrectly if need be.
+/// you can send them messages directly if need be.
 pub struct SessSend {
     pub session: Addr<Session>,
     pub server: Addr<Server>,
     pub pending_timers: Vec<hcor::plant::Timer>,
+    pub pending_notes: Vec<Note>,
     pub hackstead: Hackstead,
 }
 impl SessSend {
+    /// Create a new SessSend using the data we need from a Session.
     pub fn new(hackstead: Hackstead, session: Addr<Session>, server: Addr<Server>) -> Self {
         Self {
             pending_timers: vec![],
+            pending_notes: vec![],
             hackstead,
             session,
             server,
         }
     }
 
+    /// Create a SessSend without a Hackstead by querying the underlying Session Address; may take
+    /// significantly longer than `SessSend::new` and should therefore be avoided wherever
+    /// possible.
     pub async fn lookup_from_addrs(
         session: Addr<Session>,
         server: Addr<Server>,
@@ -281,11 +293,24 @@ impl SessSend {
         Ok(Self::new(session.send(GetStead).await?, session, server))
     }
 
+    /// Schedule a Note to be sent to this user when this SessSend is submitted.
+    pub fn send_note(&mut self, note: Note) {
+        self.pending_notes.push(note)
+    }
+
+    /// Schedule a Timer to be set on this user's hackstead when this SessSend is submitted.
+    pub fn set_timer(&mut self, t: hcor::plant::Timer) {
+        self.pending_timers.push(t);
+    }
+
+    /// Consumes a `SessSend`, sending all of the desired changes to the user's Session to be
+    /// applied.
     pub async fn submit(self) -> Result<(), MailboxError> {
         use futures::stream::{StreamExt, TryStreamExt};
         let Self {
             session,
             pending_timers,
+            pending_notes,
             hackstead,
             ..
         } = self;
@@ -295,18 +320,14 @@ impl SessSend {
                 .map(|t| session.send(StartTimer(t)))
                 .buffer_unordered(10)
                 .try_for_each_concurrent(None, |t| async move { Ok(t) }),
+            futures::stream::iter(pending_notes)
+                .map(|n| session.send(SendNote(n)))
+                .buffer_unordered(10)
+                .try_for_each_concurrent(None, |n| async move { Ok(n) }),
             session.send(ChangeStead(hackstead))
         )?;
 
         Ok(())
-    }
-
-    pub async fn send_note(&self, note: Note) -> Result<(), MailboxError> {
-        self.session.send(SendNote(note)).await
-    }
-
-    pub fn set_timer(&mut self, t: hcor::plant::Timer) {
-        self.pending_timers.push(t);
     }
 }
 impl std::ops::Deref for SessSend {
@@ -322,6 +343,9 @@ impl<'a> std::ops::DerefMut for SessSend {
     }
 }
 
+/// If the ask fails for whatever reason, the `SessSend` is not submitted,
+/// and therefore no changes are made to the user's session,
+/// in the form of hackstead mutations or set timers.
 async fn handle_ask(
     mut ss: SessSend,
     AskMessage { ask, ask_id }: AskMessage,
@@ -351,8 +375,7 @@ async fn handle_ask(
     ss.send_note(Note::Asked {
         ask_id,
         note: note.clone(),
-    })
-    .await?;
+    });
 
     if note.err().is_none() {
         ss.submit().await?;
