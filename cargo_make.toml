@@ -1,0 +1,27 @@
+[tasks.format]
+install_crate = "rustfmt"
+command = "cargo"
+args = ["fmt"]
+
+[tasks.check-format]
+install_crate = "rustfmt"
+command = "cargo"
+args = ["fmt", "--", "--check"]
+
+[tasks.build-server]
+command = "cargo"
+args = ["build", "--bin", "server"]
+
+[tasks.run-server]
+command = "cargo"
+args = ["build", "--bin", "server"]
+
+[tasks.test-against-server]
+command = "cargo"
+args = ["test", "--all-features"]
+
+[tasks.test]
+clear = true
+env = { "SERVER_URL" = "http://localhost:8000", "UPDATES_PER_SECOND" = 10000 }
+dependencies = ["build-server", "check-format"]
+run_task = { name = ["run-server", "test-against-server"], parallel = true }

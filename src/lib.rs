@@ -485,7 +485,6 @@ pub async fn beg(
     ))
 }
 
-
 #[derive(Debug)]
 /// Hackagotchi's backend API was unable to service you, for any of these reasons.
 pub enum ServiceError {

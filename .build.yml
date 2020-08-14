@@ -11,12 +11,8 @@ tasks:
     rustup toolchain install nightly
     cd backend/
     rustup run nightly cargo fetch
+    cargo install cargo-make
 - nightly: |
     rustup default nightly
     cd backend/
-    export UPDATES_PER_SECOND=10000
-    export SERVER_URL="https://localhost:8000"
-    cargo b --bin server
-    cargo r --bin server & bg
-    cargo t --all-features
-    cargo fmt -- --check
+    cargo make --makefile ./cargo_make.toml test
