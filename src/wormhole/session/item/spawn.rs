@@ -28,16 +28,14 @@ pub fn spawn(ss: &mut SessSend, item_conf: usize, amount: usize) -> Result<Vec<I
         .map(|_| {
             Item::from_archetype_handle(
                 item_conf,
-                ss.hackstead.profile.steader_id,
+                ss.profile.steader_id,
                 item::Acquisition::spawned(),
             )
         })
         .collect::<hcor::ConfigResult<_>>()?;
 
-    ss.steddit(move |hs| {
-        hs.inventory.append(&mut items.clone());
-        Ok(items.clone())
-    })
+    ss.inventory.append(&mut items.clone());
+    Ok(items)
 }
 
 #[cfg(all(test, features = "hcor_client"))]

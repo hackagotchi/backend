@@ -64,7 +64,7 @@ impl Session {
     }
 
     fn spawn_ask_handler(&self, ctx: &SessionContext, ask: AskMessage) {
-        let ss = SessSend::from_session(&self, ctx.address());
+        let ss = SessSend::new(self.hackstead.clone(), ctx.address(), self.server.clone());
         actix::spawn(async {
             handle_ask(ss, ask)
                 .await
@@ -160,39 +160,38 @@ impl Handler<DoAsk> for Session {
     type Result = actix::ResponseFuture<Result<AskedNote, MailboxError>>;
 
     fn handle(&mut self, DoAsk(ask): DoAsk, ctx: &mut Self::Context) -> Self::Result {
-        let ss = SessSend::from_session(&self, ctx.address());
+        let ss = SessSend::new(self.hackstead.clone(), ctx.address(), self.server.clone());
         Box::pin(handle_ask(ss, AskMessage { ask, ask_id: 1337 }))
     }
 }
 
-type SteadEdit = Box<dyn FnMut(&mut Hackstead) + Send + 'static>;
 #[derive(actix::Message)]
 #[rtype(result = "()")]
-pub struct ChangeStead(SteadEdit);
+pub struct ChangeStead(Hackstead);
 
 impl Handler<ChangeStead> for Session {
     type Result = ();
 
-    fn handle(&mut self, ChangeStead(mut edit): ChangeStead, ctx: &mut Self::Context) {
+    fn handle(&mut self, ChangeStead(mut new): ChangeStead, ctx: &mut Self::Context) {
         use hcor::serde_diff::Diff;
 
         let old = self.hackstead.clone();
-        edit(&mut self.hackstead);
+        assert_eq!(new.local_version, old.local_version);
+
         self.send_note(
             ctx,
             &Note::Edit(match self.orifice {
                 Orifice::Json => {
-                    let diff =
-                        serde_json::to_string(&Diff::serializable(&old, &self.hackstead)).unwrap();
-                    EditNote::Json(diff)
+                    EditNote::Json(serde_json::to_string(&Diff::serializable(&old, &new)).unwrap())
                 }
                 Orifice::Bincode => {
-                    let diff =
-                        bincode::serialize(&Diff::serializable(&old, &self.hackstead)).unwrap();
-                    EditNote::Bincode(diff)
+                    EditNote::Bincode(bincode::serialize(&Diff::serializable(&old, &new)).unwrap())
                 }
             }),
         );
+
+        new.local_version += 1;
+        self.hackstead = new;
     }
 }
 
@@ -254,47 +253,49 @@ fn strerr<T, E: ToString>(r: Result<T, E>) -> Result<T, String> {
 }
 
 /// A place to store all of your pending edits to a User's Session.
-pub struct SessEditStore {
+///
+/// Your `SessSend` is your interface for editing with a user's Session from afar.
+/// It has helper methods for scheduling atomic edits for a user's hackstead,
+/// and also exposes the addresses of the user's hackstead and server, so that
+/// you can send them messages dirrectly if need be.
+pub struct SessSend {
     pub session: Addr<Session>,
-    pub stead_edits: Vec<SteadEdit>,
+    pub server: Addr<Server>,
     pub pending_timers: Vec<hcor::plant::Timer>,
     pub hackstead: Hackstead,
 }
-impl SessEditStore {
-    pub fn new(session: Addr<Session>, hackstead: Hackstead) -> Self {
+impl SessSend {
+    pub fn new(hackstead: Hackstead, session: Addr<Session>, server: Addr<Server>) -> Self {
         Self {
-            stead_edits: vec![],
             pending_timers: vec![],
             hackstead,
             session,
+            server,
         }
     }
 
-    pub async fn from_session(session: Addr<Session>) -> Result<Self, MailboxError> {
-        let stead = session.send(GetStead).await?;
-        Ok(Self::new(session, stead))
+    pub async fn lookup_from_addrs(
+        session: Addr<Session>,
+        server: Addr<Server>,
+    ) -> Result<Self, MailboxError> {
+        Ok(Self::new(session.send(GetStead).await?, session, server))
     }
 
-    pub fn steddit<T, F: FnMut(&mut Hackstead) -> T + Send + 'static>(&mut self, mut f: F) -> T {
-        let o = f(&mut self.hackstead);
-        self.stead_edits.push(Box::new(move |hs| drop(f(hs))));
-        o
-    }
-
-    pub async fn submit_stead_edits(&mut self) -> Result<(), MailboxError> {
+    pub async fn submit(self) -> Result<(), MailboxError> {
         use futures::stream::{StreamExt, TryStreamExt};
-        let mut stead_edits = std::mem::take(&mut self.stead_edits);
+        let Self {
+            session,
+            pending_timers,
+            hackstead,
+            ..
+        } = self;
 
         futures::try_join!(
-            futures::stream::iter(std::mem::take(&mut self.pending_timers))
-                .map(|t| self.session.send(StartTimer(t)))
+            futures::stream::iter(pending_timers)
+                .map(|t| session.send(StartTimer(t)))
                 .buffer_unordered(10)
                 .try_for_each_concurrent(None, |t| async move { Ok(t) }),
-            self.session.send(ChangeStead(Box::new(move |hs| {
-                for edit_fn in stead_edits.iter_mut() {
-                    edit_fn(hs)
-                }
-            })))
+            session.send(ChangeStead(hackstead))
         )?;
 
         Ok(())
@@ -308,33 +309,16 @@ impl SessEditStore {
         self.pending_timers.push(t);
     }
 }
-
-/// Your `SessSend` is your interface for editing with a user's Session from afar.
-/// It has helper methods for scheduling atomic edits for a user's hackstead,
-/// and also exposes the addresses of the user's hackstead and server, so that
-/// you can send them messages dirrectly if need be.
-pub struct SessSend {
-    edit_store: SessEditStore,
-    server: Addr<Server>,
-}
-impl SessSend {
-    fn from_session(ses: &Session, ses_addr: Addr<Session>) -> Self {
-        Self {
-            edit_store: SessEditStore::new(ses_addr, ses.hackstead.clone()),
-            server: ses.server.clone(),
-        }
-    }
-}
 impl std::ops::Deref for SessSend {
-    type Target = SessEditStore;
+    type Target = Hackstead;
 
     fn deref(&self) -> &Self::Target {
-        &self.edit_store
+        &self.hackstead
     }
 }
 impl<'a> std::ops::DerefMut for SessSend {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.edit_store
+        &mut self.hackstead
     }
 }
 
@@ -352,32 +336,27 @@ async fn handle_ask(
     );
 
     let note = match ask {
-        KnowledgeSnort { xp } => {
-            ss.steddit(move |hs| hs.profile.xp += xp);
-            KnowledgeSnortResult(Ok(ss.hackstead.profile.xp))
-        }
+        KnowledgeSnort { xp } => KnowledgeSnortResult(Ok({
+            let hs = &mut ss.hackstead;
+            hs.profile.xp += xp;
+            hs.profile.xp
+        })),
         Plant(p) => plant::handle_ask(&mut ss, p),
         Item(i) => item::handle_ask(&mut ss, i).await,
         TileSummon {
             tile_redeemable_item_id,
         } => TileSummonResult(strerr(tile::summon(&mut ss, tile_redeemable_item_id))),
     };
-    let should_submit = note.err().is_none();
 
-    futures::try_join!(
-        // can't use `send_note` method because the borrow checker goes nuts
-        ss.session.send(SendNote(Note::Asked {
-            ask_id,
-            note: note.clone()
-        })),
-        async {
-            if should_submit {
-                ss.submit_stead_edits().await
-            } else {
-                Ok(())
-            }
-        },
-    )?;
+    ss.send_note(Note::Asked {
+        ask_id,
+        note: note.clone(),
+    })
+    .await?;
+
+    if note.err().is_none() {
+        ss.submit().await?;
+    }
 
     Ok(note)
 }

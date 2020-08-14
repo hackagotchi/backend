@@ -1,5 +1,5 @@
-use crate::wormhole::session::SessEditStore;
-use actix::{Context, Handler, MailboxError, Message, ResponseFuture};
+use crate::wormhole::session::SessSend;
+use actix::{AsyncContext, Context, Handler, MailboxError, Message, ResponseFuture};
 use hcor::{id, item, wormhole::RudeNote::ItemThrowReceipt, Item, ItemId, Note, SteaderId};
 use std::fmt;
 
@@ -65,7 +65,7 @@ pub struct ThrowItems {
 impl Handler<ThrowItems> for super::Server {
     type Result = ResponseFuture<Result<Vec<Item>, Error>>;
 
-    fn handle(&mut self, ti: ThrowItems, _: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, ti: ThrowItems, ctx: &mut Context<Self>) -> Self::Result {
         let ThrowItems {
             sender_id,
             receiver_id,
@@ -77,23 +77,22 @@ impl Handler<ThrowItems> for super::Server {
         let ses = |id| self.sessions.get(&id).cloned().ok_or(PartyOffline(id));
         let tx_ses = ses(sender_id);
         let rx_ses = ses(receiver_id);
+        let addr = ctx.address();
 
         Box::pin(async move {
             if sender_id == receiver_id {
                 return Err(SelfGive);
             }
 
-            let mut tx_hs = SessEditStore::from_session(tx_ses?).await?;
-            let mut rx_hs = SessEditStore::from_session(rx_ses?).await?;
+            let mut tx_hs = SessSend::lookup_from_addrs(tx_ses?, addr.clone()).await?;
+            let mut rx_hs = SessSend::lookup_from_addrs(rx_ses?, addr.clone()).await?;
 
-            let mut items = tx_hs.steddit(move |tx_hs| {
-                // n^2 perf right here D:
-                item_ids
-                    .clone()
-                    .into_iter()
-                    .map(|i| tx_hs.take_item(i))
-                    .collect::<Result<Vec<Item>, id::NoSuch>>()
-            })?;
+            // n^2 perf right here D:
+            let mut items = item_ids
+                .clone()
+                .into_iter()
+                .map(|i| tx_hs.take_item(i))
+                .collect::<Result<Vec<Item>, id::NoSuch>>()?;
 
             for i in &mut items {
                 if i.owner_id != sender_id {
@@ -108,20 +107,18 @@ impl Handler<ThrowItems> for super::Server {
                 })
             }
 
-            rx_hs.steddit({
-                let items = items.clone();
-                move |rx| rx.inventory.append(&mut items.clone())
-            });
+            rx_hs.inventory.append(&mut items.clone());
 
-            tx_hs.submit_stead_edits().await?;
-            rx_hs.submit_stead_edits().await?;
             rx_hs
                 .send_note(Note::Rude(ItemThrowReceipt {
                     from: sender_id,
                     items: items.clone(),
                 }))
                 .await?;
-            Ok(items.clone())
+
+            tx_hs.submit().await?;
+            rx_hs.submit().await?;
+            Ok(items)
         })
     }
 }

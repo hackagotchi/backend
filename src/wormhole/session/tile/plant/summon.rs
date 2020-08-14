@@ -37,7 +37,7 @@ impl fmt::Display for Error {
 }
 
 pub fn summon(ss: &mut SessSend, tile_id: TileId, item_id: ItemId) -> Result<Plant, Error> {
-    let item = ss.steddit(move |hs| hs.take_item(item_id))?;
+    let item = ss.take_item(item_id)?;
     let seed = item
         .seed
         .as_ref()
@@ -56,22 +56,13 @@ pub fn summon(ss: &mut SessSend, tile_id: TileId, item_id: ItemId) -> Result<Pla
         })
     }
 
-    // insert the plant, failing if there already is one.
-    // it's somewhat important that we create the plant *outside* of a .steddit call,
-    // otherwise our local SessSend and the server could end up with different Plants,
-    // provided that RNG or some other shenanigan happens during plant creation.
-    //
-    // Of course, that would only be an issue temporarily because this local SessSend is
-    // right about to come to an end ...
-    ss.steddit(move |hs| {
-        let tile = hs.tile_mut(tile_id)?;
-        if let Some(plant) = tile.plant.as_ref() {
-            return Err(AlreadyOccupied(tile_id, plant.clone()));
-        }
+    let tile = ss.tile_mut(tile_id)?;
+    if let Some(plant) = tile.plant.as_ref() {
+        return Err(AlreadyOccupied(tile_id, plant.clone()));
+    }
 
-        tile.plant = Some(plant.clone());
-        Ok(plant.clone())
-    })
+    tile.plant = Some(plant.clone());
+    Ok(plant)
 }
 
 #[cfg(all(feature = "hcor_client", test))]

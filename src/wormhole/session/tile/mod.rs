@@ -34,24 +34,21 @@ impl fmt::Display for Error {
 }
 
 pub fn summon(ss: &mut SessSend, item_id: ItemId) -> Result<Tile, Error> {
-    let item = ss.hackstead.item(item_id)?;
+    let item = ss.take_item(item_id)?;
     let land_unlock = item
         .unlocks_land
         .as_ref()
         .ok_or_else(|| NotConfigured(item.clone()))?;
 
     if !land_unlock.requires_xp {
-        ss.steddit(|hs| hs.profile.extra_land_plot_count += 1);
+        ss.profile.extra_land_plot_count += 1;
     }
 
-    if ss.hackstead.land_unlock_eligible() {
-        let tile = Tile::new(ss.hackstead.profile.steader_id);
+    if ss.land_unlock_eligible() {
+        let tile = Tile::new(ss.profile.steader_id);
 
-        ss.steddit(move |hs| {
-            hs.take_item(item_id)?;
-            hs.land.push(tile.clone());
-            Ok(tile.clone())
-        })
+        ss.land.push(tile.clone());
+        Ok(tile)
     } else {
         Err(Ineligible)
     }

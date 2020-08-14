@@ -39,12 +39,12 @@ pub fn rub(
     tile_id: TileId,
     item_id: ItemId,
 ) -> Result<Vec<plant::Effect>, Error> {
-    let item = ss.steddit(move |hs| hs.take_item(item_id))?;
+    let item = ss.take_item(item_id)?;
     if item.plant_rub_effects.is_empty() {
         return Err(NoEffect(None, item));
     }
 
-    let plant = ss.hackstead.plant(tile_id)?;
+    let plant = ss.plant(tile_id)?;
     let plant_name = plant.name.clone();
 
     let mut effect_confs = item.rub_effects_for_plant_indexed(&plant_name).peekable();
@@ -75,10 +75,8 @@ pub fn rub(
         })
         .collect();
 
-    ss.steddit(move |hs| {
-        hs.plant_mut(tile_id)?.effects.append(&mut effects.clone());
-        Ok(effects.clone())
-    })
+    ss.plant_mut(tile_id)?.effects.append(&mut effects.clone());
+    Ok(effects)
 }
 
 #[cfg(all(feature = "hcor_client", test))]

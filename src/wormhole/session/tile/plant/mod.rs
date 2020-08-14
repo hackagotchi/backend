@@ -18,9 +18,7 @@ pub fn handle_ask(ss: &mut SessSend, ask: PlantAsk) -> AskedNote {
             tile_id,
             seed_item_id,
         } => PlantSummonResult(strerr(summon(ss, tile_id, seed_item_id))),
-        Slaughter { tile_id } => {
-            PlantSlaughterResult(strerr(ss.steddit(move |hs| hs.take_plant(tile_id))))
-        }
+        Slaughter { tile_id } => PlantSlaughterResult(strerr(ss.take_plant(tile_id))),
         Craft {
             tile_id,
             recipe_index,

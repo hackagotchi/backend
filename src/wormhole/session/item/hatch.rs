@@ -30,7 +30,7 @@ impl fmt::Display for Error {
 }
 
 pub fn hatch(ss: &mut SessSend, item_id: ItemId) -> Result<Vec<Item>, Error> {
-    let item = ss.steddit(move |hs| hs.take_item(item_id))?;
+    let item = ss.take_item(item_id)?;
     let hatch_table = item
         .hatch_table
         .as_ref()
@@ -49,10 +49,8 @@ pub fn hatch(ss: &mut SessSend, item_id: ItemId) -> Result<Vec<Item>, Error> {
             panic!("hatch table produced: {}", e);
         });
 
-    ss.steddit(move |hs| {
-        hs.inventory.append(&mut items.clone());
-        Ok(items.clone())
-    })
+    ss.inventory.append(&mut items.clone());
+    Ok(items)
 }
 
 #[cfg(all(test, feature = "hcor_client"))]
