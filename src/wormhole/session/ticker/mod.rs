@@ -1,4 +1,4 @@
-use super::{send_note, SessionContext};
+use super::{Session, SessionContext};
 use hcor::{plant, Hackstead, Note};
 
 mod finish;
@@ -7,6 +7,7 @@ use finish::finish_timer;
 #[cfg(all(test, feature = "hcor_client"))]
 mod test;
 
+#[derive(Default)]
 pub struct Ticker {
     pub timers: Vec<plant::Timer>,
     complete_timers: Vec<(usize, plant::timer::Lifecycle)>,
@@ -24,7 +25,7 @@ impl Ticker {
         self.timers.push(timer);
     }
 
-    pub fn tick(&mut self, hs: &mut Hackstead, ctx: &mut SessionContext) {
+    pub fn tick(&mut self, ses: &mut Session, ctx: &mut SessionContext) {
         for (i, t) in &mut self.timers.iter_mut().enumerate() {
             t.until_finish -= 1.0;
 
@@ -45,8 +46,8 @@ impl Ticker {
                 Lifecycle::Annual => self.timers.swap_remove(i),
             };
 
-            match finish_timer(hs, ctx, timmy) {
-                Ok(n) => send_note(ctx, &Note::Rude(n)),
+            match finish_timer(&mut ses.hackstead, ctx, timmy) {
+                Ok(n) => ses.send_note(ctx, &Note::Rude(n)),
                 Err(e) => log::error!("error finishing timer {:#?}: {}", timmy, e),
             }
         }

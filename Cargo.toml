@@ -20,6 +20,7 @@ required-features = [ "csv_migration" ]
 
 [features]
 hcor_client = [ "hcor/client", "hcor/simultaneous_systems" ]
+awc_test = [ "awc" ]
 csv_migration = [ "csv", "regex" ]
 webserver = [ ]
 default = [ "webserver" ]
@@ -49,9 +50,11 @@ tokio = { version = "0.2.22", features = [ "macros" ] }
 actix = "0.9.0"
 actix-web-actors = "2.0.0"
 regex = { version = "1.3.9", optional = true }
+awc = { version = "1.0.1", optional = true }
+bincode = "1.3.1"
 
 [dependencies.hcor]
 #git = "https://github.com/hackagotchi/hcor.git"
 #branch = "slim"
 path = "../hcor"
-features = [ "hackstead_message_derive" ]
+features = [ "message_derive" ]

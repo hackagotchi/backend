@@ -8,14 +8,18 @@ async fn main() -> std::io::Result<()> {
     let wormhole = backend::WormholeServer::new().start();
 
     HttpServer::new(move || {
-        App::new()
-            .data(wormhole.clone())
-            // wormhole
-            .service(web::resource("/wormhole").to(backend::establish_wormhole))
-            // hackstead
-            .service(backend::get_hackstead)
-            .service(backend::new_hackstead)
-            .service(backend::remove_hackstead)
+        App::new().service(
+            web::scope("/api")
+                .data(wormhole.clone())
+                // wormhole
+                .service(web::resource("/wormhole").to(backend::establish_wormhole))
+                // hackstead
+                .service(backend::hackstead_summon)
+                .service(backend::hackstead_spy)
+                .service(backend::hackstead_slaughter)
+                // beg
+                .service(backend::beg),
+        )
     })
     .bind("127.0.0.1:8000")?
     .run()

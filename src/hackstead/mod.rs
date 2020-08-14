@@ -44,7 +44,7 @@ pub fn fs_put_stead(hs: &Hackstead) -> Result<(), ServiceError> {
 
 #[post("/hackstead/spy")]
 /// Returns a user's hackstead, complete with Profile, Inventory, and Tiles.
-pub async fn get_hackstead(
+pub async fn hackstead_spy(
     user: web::Json<UserId>,
     srv: web::Data<actix::Addr<wormhole::Server>>,
 ) -> Result<HttpResponse, ServiceError> {
@@ -64,7 +64,7 @@ pub async fn get_hackstead(
 }
 
 #[post("/hackstead/summon")]
-pub async fn new_hackstead(
+pub async fn hackstead_summon(
     user: web::Json<NewHacksteadRequest>,
 ) -> Result<HttpResponse, ServiceError> {
     debug!("servicing new_hackstead request");
@@ -78,7 +78,7 @@ pub async fn new_hackstead(
 }
 
 #[post("/hackstead/slaughter")]
-pub async fn remove_hackstead(user: web::Json<UserId>) -> Result<HttpResponse, ServiceError> {
+pub async fn hackstead_slaughter(user: web::Json<UserId>) -> Result<HttpResponse, ServiceError> {
     debug!("servicing remove_hackstead request");
 
     let stead = fs_get_stead(&*user)?;

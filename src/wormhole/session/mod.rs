@@ -6,7 +6,7 @@ use log::*;
 
 use super::server::{self, Server};
 use hcor::{
-    wormhole::{AskMessage, CLIENT_TIMEOUT, HEARTBEAT_INTERVAL},
+    wormhole::{AskMessage, AskedNote, EditNote, CLIENT_TIMEOUT, HEARTBEAT_INTERVAL},
     Hackstead, IdentifiesSteader, Note, UPDATE_INTERVAL,
 };
 
@@ -15,11 +15,13 @@ mod ticker;
 mod tile;
 use tile::plant;
 
-fn send_note(ctx: &mut SessionContext, note: &Note) {
-    match serde_json::to_string(note) {
-        Ok(json) => ctx.text(json),
-        Err(e) => error!("couldn't serialize Note: {}", e),
-    }
+/// Which opening to the wormhole are they making use of?
+#[derive(Copy, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub enum Orifice {
+    /// Binary messages, encoded in Bincode
+    Bincode,
+    /// Text messages, encoded in JSON
+    Json,
 }
 
 /// An individual user's session with the Server. It contains an address to that server so
@@ -29,6 +31,7 @@ fn send_note(ctx: &mut SessionContext, note: &Note) {
 pub struct Session {
     hackstead: Hackstead,
     heartbeat: Instant,
+    orifice: Orifice,
     server: Addr<Server>,
     ticker: ticker::Ticker,
 }
@@ -37,13 +40,37 @@ type SessionContext = ws::WebsocketContext<Session>;
 impl Session {
     /// Constructs a new wormhole session from the uuid of the user who owns this session
     /// and an address which points to the Server.
-    pub fn new(mut hackstead: Hackstead, srv: &Addr<Server>) -> Self {
+    pub fn new(mut hackstead: Hackstead, srv: &Addr<Server>, orifice: Orifice) -> Self {
         Self {
             heartbeat: Instant::now(),
             server: srv.clone(),
             ticker: ticker::Ticker::new(&mut hackstead),
+            orifice,
             hackstead,
         }
+    }
+
+    fn send_note(&self, ctx: &mut SessionContext, note: &Note) {
+        match self.orifice {
+            Orifice::Json => match serde_json::to_string(note) {
+                Ok(json) => ctx.text(json),
+                Err(e) => error!("couldn't Json serialize Note: {}", e),
+            },
+            Orifice::Bincode => match bincode::serialize(note) {
+                Ok(bytes) => ctx.binary(bytes),
+                Err(e) => error!("couldn't Bincode serialize Note: {}", e),
+            },
+        }
+    }
+
+    fn spawn_ask_handler(&self, ctx: &SessionContext, ask: AskMessage) {
+        let ss = SessSend::from_session(&self, ctx.address());
+        actix::spawn(async {
+            handle_ask(ss, ask)
+                .await
+                .map(|_| ())
+                .unwrap_or_else(|e| error!("couldn't handle ask: {}", e))
+        });
     }
 
     /// This function is responsible for sending messages to the client to assure that we're still
@@ -64,7 +91,9 @@ impl Session {
     #[allow(clippy::unused_self)]
     fn tick(&self, ctx: &mut SessionContext) {
         ctx.run_interval(*UPDATE_INTERVAL, |act, ctx| {
-            act.ticker.tick(&mut act.hackstead, ctx)
+            let mut ticker = std::mem::take(&mut act.ticker);
+            ticker.tick(act, ctx);
+            act.ticker = ticker;
         });
     }
 }
@@ -105,7 +134,7 @@ impl Handler<SendNote> for Session {
     type Result = ();
 
     fn handle(&mut self, SendNote(note): SendNote, ctx: &mut Self::Context) {
-        send_note(ctx, &note);
+        self.send_note(ctx, &note);
     }
 }
 
@@ -123,6 +152,19 @@ impl Handler<GetStead> for Session {
     }
 }
 
+#[derive(actix::Message)]
+#[rtype(result = "Result<AskedNote, MailboxError>")]
+pub struct DoAsk(pub hcor::Ask);
+
+impl Handler<DoAsk> for Session {
+    type Result = actix::ResponseFuture<Result<AskedNote, MailboxError>>;
+
+    fn handle(&mut self, DoAsk(ask): DoAsk, ctx: &mut Self::Context) -> Self::Result {
+        let ss = SessSend::from_session(&self, ctx.address());
+        Box::pin(handle_ask(ss, AskMessage { ask, ask_id: 1337 }))
+    }
+}
+
 type SteadEdit = Box<dyn FnMut(&mut Hackstead) + Send + 'static>;
 #[derive(actix::Message)]
 #[rtype(result = "()")]
@@ -136,8 +178,21 @@ impl Handler<ChangeStead> for Session {
 
         let old = self.hackstead.clone();
         edit(&mut self.hackstead);
-        let diff = serde_json::to_vec(&Diff::serializable(&old, &self.hackstead)).unwrap();
-        send_note(ctx, &Note::Edit(diff))
+        self.send_note(
+            ctx,
+            &Note::Edit(match self.orifice {
+                Orifice::Json => {
+                    let diff =
+                        serde_json::to_string(&Diff::serializable(&old, &self.hackstead)).unwrap();
+                    EditNote::Json(diff)
+                }
+                Orifice::Bincode => {
+                    let diff =
+                        bincode::serialize(&Diff::serializable(&old, &self.hackstead)).unwrap();
+                    EditNote::Bincode(diff)
+                }
+            }),
+        );
     }
 }
 
@@ -171,18 +226,18 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
                 ctx.pong(&msg);
             }
             Ok(Pong(_)) => self.heartbeat = Instant::now(),
-            Ok(Text(t)) => {
+            Ok(Text(t)) if self.orifice == Orifice::Json => {
                 // we're more lenient with deserialization errors than websocket errors
                 match serde_json::from_str(&t) {
-                    Ok(ask) => {
-                        let ss = SessSend::from_session(&self, ctx.address());
-                        actix::spawn(async {
-                            handle_ask(ss, ask)
-                                .await
-                                .unwrap_or_else(|e| error!("couldn't handle ask: {}", e))
-                        });
-                    }
-                    Err(e) => error!("couldn't deserialize AskMessage: {}", e),
+                    Ok(ask) => self.spawn_ask_handler(ctx, ask),
+                    Err(e) => error!("couldn't deserialize JSON AskMessage: {}", e),
+                }
+            }
+            Ok(Binary(b)) if self.orifice == Orifice::Bincode => {
+                // we're more lenient with deserialization errors than websocket errors
+                match bincode::deserialize(&b) {
+                    Ok(ask) => self.spawn_ask_handler(ctx, ask),
+                    Err(e) => error!("couldn't deserialize Bincode AskMessage: {}", e),
                 }
             }
             Ok(Close(msg)) => {
@@ -286,7 +341,7 @@ impl<'a> std::ops::DerefMut for SessSend {
 async fn handle_ask(
     mut ss: SessSend,
     AskMessage { ask, ask_id }: AskMessage,
-) -> Result<(), MailboxError> {
+) -> Result<AskedNote, MailboxError> {
     use hcor::wormhole::{Ask::*, AskedNote::*};
 
     trace!(
@@ -311,7 +366,10 @@ async fn handle_ask(
 
     futures::try_join!(
         // can't use `send_note` method because the borrow checker goes nuts
-        ss.session.send(SendNote(Note::Asked { ask_id, note })),
+        ss.session.send(SendNote(Note::Asked {
+            ask_id,
+            note: note.clone()
+        })),
         async {
             if should_submit {
                 ss.submit_stead_edits().await
@@ -321,5 +379,5 @@ async fn handle_ask(
         },
     )?;
 
-    Ok(())
+    Ok(note)
 }
