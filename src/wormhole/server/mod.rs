@@ -3,7 +3,8 @@
 
 use std::collections::HashMap;
 
-use actix::{dev::Envelope, Actor, Addr, Context, Handler, Message};
+use actix::{dev::Envelope, Actor, Addr, AsyncContext, Context, Handler, Message};
+use log::*;
 
 use super::session::{self, Session};
 use hcor::{IdentifiesSteader, Note, SteaderId};
@@ -23,6 +24,8 @@ impl Handler<Connect> for Server {
 
     fn handle(&mut self, Connect(u, a): Connect, _: &mut Context<Self>) {
         self.sessions.insert(u, a);
+
+        info!("user connected - {} users online", self.sessions.len());
     }
 }
 
@@ -34,8 +37,21 @@ pub struct Disconnect(pub SteaderId);
 impl Handler<Disconnect> for Server {
     type Result = ();
 
-    fn handle(&mut self, Disconnect(u): Disconnect, _: &mut Context<Self>) {
+    fn handle(&mut self, Disconnect(u): Disconnect, ctx: &mut Context<Self>) {
         self.sessions.remove(&u);
+
+        info!("user logged off - {} users online", self.sessions.len());
+
+        #[cfg(feature = "autoclose")]
+        if self.sessions.len() == 0 {
+            warn!("ending process in 30 seconds if no more users log on");
+            ctx.run_later(std::time::Duration::from_secs(30), |act, _| {
+                if act.sessions.len() == 0 {
+                    warn!("ending process");
+                    std::process::exit(0)
+                }
+            });
+        }
     }
 }
 

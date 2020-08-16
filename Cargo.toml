@@ -23,6 +23,7 @@ hcor_client = [ "hcor/client", "hcor/simultaneous_systems" ]
 awc_test = [ "awc" ]
 csv_migration = [ "csv", "regex" ]
 webserver = [ ]
+autoclose = [ ]
 default = [ "webserver" ]
 
 [dependencies]
