@@ -27,13 +27,14 @@ impl fmt::Display for Error {
         write!(f, "couldn't spawn items: ")?;
         match self {
             NoSuchItemConf(e) => write!(f, "no such item conf: {}", e),
+            NoSuch(e) => write!(f, "no such item: {}", e),
         }
     }
 }
 
 pub fn rename(ss: &mut SessSend, item_id: ItemId, new_name: String) -> Result<String, Error> {
     let item = ss.item_mut(item_id)?;
-    let gotchi = item.gotchi?;
+    let gotchi = item.gotchi_mut()?;
     gotchi.nickname = new_name.clone();
     Ok(new_name.clone())
 }
