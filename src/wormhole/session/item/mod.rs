@@ -1,10 +1,10 @@
 use super::{strerr, HandledAskKind, SessSend};
 use crate::wormhole::server;
+use hcor::id::ItemId;
 use hcor::wormhole::{
     AskedNote::*,
     ItemAsk::{self, *},
 };
-use hcor::id::ItemId;
 
 mod spawn;
 use spawn::spawn;
@@ -32,6 +32,8 @@ pub(super) fn handle_ask(ss: &mut SessSend, ask: ItemAsk) -> HandledAskKind {
             }))
         }
         Hatch { hatchable_item_id } => ItemHatchResult(strerr(hatch(ss, hatchable_item_id))),
-        GotchiRename { item_id, new_name} => GotchiRenameResult(strerr(rename(ss, item_id, new_name))),  
+        GotchiRename { item_id, new_name } => {
+            GotchiRenameResult(strerr(rename(ss, item_id, new_name)))
+        }
     })
 }

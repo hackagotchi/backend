@@ -1,7 +1,7 @@
 use super::SessSend;
+use hcor::id::ItemId;
 use hcor::{id, item, ConfigError, Item};
 use std::fmt;
-use hcor::id::ItemId;
 
 #[derive(Debug)]
 pub enum Error {

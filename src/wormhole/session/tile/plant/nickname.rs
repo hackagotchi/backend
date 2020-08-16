@@ -20,17 +20,15 @@ impl fmt::Display for Error {
         write!(f, "couldn't rename plant: ")?;
         match self {
             NoSuch(ns) => write!(f, "{}", ns),
-            
         }
     }
 }
 
 pub fn nickname(ss: &mut SessSend, tile_id: TileId, new_name: String) -> Result<String, Error> {
-
     let plant = ss.plant_mut(tile_id)?;
-    plant.nickname = new_name.clone(); 
+    plant.nickname = new_name.clone();
 
-   Ok(new_name.clone())
+    Ok(new_name.clone())
 }
 
 #[cfg(all(feature = "hcor_client", test))]
