@@ -1,59 +1,93 @@
-use crate::data;
-use actix_web::{get, post, web, HttpResponse};
-use hcor::{Hackstead, ServiceError, UserContact};
+use crate::{
+    wormhole::{self, server},
+    ServiceError,
+};
+use actix_web::{post, web, HttpResponse};
+use hcor::{hackstead::NewHacksteadRequest, Hackstead, IdentifiesSteader, IdentifiesUser, UserId};
 use log::*;
+use std::fs;
 
-#[cfg(test)]
+#[cfg(all(test, feature = "hcor_client"))]
 mod test;
 
-#[get("/hackstead/")]
-pub async fn get_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse, ServiceError> {
+fn user_path(iu: impl IdentifiesUser) -> String {
+    match iu.user_id() {
+        UserId::Uuid(uuid) | UserId::Both { uuid, .. } => stead_path(uuid),
+        UserId::Slack(slack_id) => slack_path(&slack_id),
+    }
+}
+
+fn stead_path(is: impl IdentifiesSteader) -> String {
+    format!("stead/{}.json", is.steader_id())
+}
+
+fn slack_path(slack: &str) -> String {
+    format!("slack/{}.json", slack)
+}
+
+pub fn fs_get_stead(user_id: impl IdentifiesUser) -> Result<Hackstead, ServiceError> {
+    Ok(serde_json::from_str(&fs::read_to_string(user_path(
+        user_id,
+    ))?)?)
+}
+
+pub fn fs_put_stead(hs: &Hackstead) -> Result<(), ServiceError> {
+    let stead_path = stead_path(hs);
+    fs::write(&stead_path, serde_json::to_string(hs)?)?;
+
+    if let Some(s) = hs.profile.slack_id.as_ref() {
+        fs::hard_link(&stead_path, &slack_path(s))?;
+    }
+
+    Ok(())
+}
+
+#[post("/hackstead/spy")]
+/// Returns a user's hackstead, complete with Profile, Inventory, and Tiles.
+pub async fn hackstead_spy(
+    user: web::Json<UserId>,
+    srv: web::Data<actix::Addr<wormhole::Server>>,
+) -> Result<HttpResponse, ServiceError> {
     debug!("servicing get_hackstead request");
 
-    let slack_id = form.slack().ok_or(ServiceError::bad_request("no slack"))?;
-    let stead_bson = data::hacksteads()
-        .await?
-        .find_one(bson::doc! { "id": slack_id }, None)
-        .await?
-        .ok_or(ServiceError::NoData)?;
+    let mut stead = fs_get_stead(&*user)?;
+    trace!("got hackstead from fs: {:#?}", stead);
 
-    let stead: Hackstead =
-        bson::from_bson(stead_bson.into()).map_err(|_| ServiceError::InternalServerError)?;
-
-    trace!("got hackstead: {:#?}", stead);
+    // if there's already a Session up for this user, that Session will have a much fresher
+    // hackstead than we just read off of the fs.
+    if let Some(ses) = srv.send(server::GetSession::new(&stead)).await? {
+        stead = ses.send(wormhole::session::GetStead).await?;
+        trace!("got fresh hackstead from session: {:#?}", stead);
+    }
 
     Ok(HttpResponse::Ok().json(stead))
 }
 
-#[post("/hackstead/new")]
-pub async fn new_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse, ServiceError> {
+#[post("/hackstead/summon")]
+pub async fn hackstead_summon(
+    user: web::Json<NewHacksteadRequest>,
+) -> Result<HttpResponse, ServiceError> {
     debug!("servicing new_hackstead request");
 
-    let slack_id = form.slack().ok_or(ServiceError::bad_request("no slack"))?;
-    let hs = Hackstead::new(slack_id);
-    data::hacksteads()
-        .await?
-        .insert_one(data::to_doc(&hs)?, None)
-        .await?;
+    let slack = user.slack_id.as_ref();
+    let stead = Hackstead::new_user(slack);
 
-    Ok(HttpResponse::Created().finish())
+    fs_put_stead(&stead)?;
+
+    Ok(HttpResponse::Created().json(&stead))
 }
 
-#[post("/hackstead/remove")]
-pub async fn remove_hackstead(form: web::Json<UserContact>) -> Result<HttpResponse, ServiceError> {
+#[post("/hackstead/slaughter")]
+pub async fn hackstead_slaughter(user: web::Json<UserId>) -> Result<HttpResponse, ServiceError> {
     debug!("servicing remove_hackstead request");
 
-    let slack_id = form.slack().ok_or(ServiceError::bad_request("no slack"))?;
-    let stead_bson = data::hacksteads()
-        .await?
-        .find_one_and_delete(bson::doc! { "id": slack_id }, None)
-        .await?
-        .ok_or(ServiceError::NoData)?;
+    let stead = fs_get_stead(&*user)?;
+    debug!(":( removing hackstead: {:#?}", stead);
 
-    let stead: Hackstead =
-        bson::from_bson(stead_bson.into()).map_err(|_| ServiceError::InternalServerError)?;
-
-    debug!(":( removed hackstead: {:#?}", stead);
+    fs::remove_file(&stead_path(stead.profile.steader_id))?;
+    if let Some(slack) = stead.profile.slack_id.as_ref() {
+        fs::remove_file(&slack_path(slack))?;
+    }
 
     Ok(HttpResponse::Ok().json(stead))
 }

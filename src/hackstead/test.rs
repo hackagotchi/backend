@@ -1,98 +1,47 @@
-use hcor::ServiceError;
-
 #[actix_rt::test]
-async fn test_get_hackstead() -> Result<(), ServiceError> {
-    use actix_web::{App, HttpServer};
-    use hcor::{Hackstead, UserContact};
+async fn hackstead() -> hcor::ClientResult<()> {
+    use hcor::Hackstead;
 
-    pretty_env_logger::init();
-
-    tokio::spawn(
-        HttpServer::new(move || {
-            App::new()
-                .service(super::new_hackstead)
-                .service(super::get_hackstead)
-                .service(super::remove_hackstead)
-        })
-        .bind("127.0.0.1:8000")
-        .expect("couldn't bind port 8000")
-        .run(),
-    );
+    // attempt to establish logging, do nothing if it fails
+    // (it probably fails because it's already been established in another test)
+    drop(pretty_env_logger::try_init());
 
     // create bob's stead!
-    const BOB_ID: &'static str = "U14MB0B";
-    let bob_contact = UserContact::Slack(BOB_ID.to_string());
-    {
-        let res = reqwest::Client::new()
-            .post("http://127.0.0.1:8000/hackstead/new")
-            .json(&bob_contact)
-            .send()
-            .await
-            .expect("no send request");
-
-        assert!(
-            res.status().is_success(),
-            "/hackstead/new Response status: {}",
-            res.status()
-        );
-    }
-
-    let get_bob = || async {
-        reqwest::Client::new()
-            .get("http://127.0.0.1:8000/hackstead/")
-            .json(&bob_contact)
-            .send()
-            .await
-            .expect("no send request")
-    };
-    let kill_bob = || async {
-        reqwest::Client::new()
-            .post("http://127.0.0.1:8000/hackstead/remove")
-            .json(&bob_contact)
-            .send()
-            .await
-            .expect("no send request")
-    };
+    let bobstead = Hackstead::register().await?;
 
     // fetch bob
-    let bobstead: Hackstead = {
-        log::info!("requesting {:?}", bob_contact);
-        let res = get_bob().await;
-
-        assert!(
-            res.status().is_success(),
-            "/hackstead/ Response status: {}",
-            res.status()
-        );
-        res.json().await.expect("bad json")
-    };
+    assert_eq!(Hackstead::fetch(&bobstead).await?, bobstead);
 
     // now kill bob
-    {
-        let res = kill_bob().await;
-        assert!(
-            res.status().is_success(),
-            "/hackstead/remove Response status: {}",
-            res.status()
-        );
-        let returned_bobstead: Hackstead = res.json().await.expect("bad json");
-        assert_eq!(
-            bobstead, returned_bobstead,
-            "the hackstead returned from /hackstead/remove is different than the one from /hackstead/!"
-        );
-    }
+    bobstead.slaughter().await?;
 
     // make sure we can't get ded bob
+    match Hackstead::fetch(&bobstead).await {
+        Err(e) => log::info!("fetching ded bobstead failed as expected: {}", e),
+        Ok(_) => panic!("fetching bobstead succeeded after he was slaughtered!"),
+    }
+
+    // make sure we can't kill an already dead bob
+    match bobstead.slaughter().await {
+        Err(e) => log::info!(
+            "received error as expected killing bob a second time: {}",
+            e
+        ),
+        Ok(_) => panic!("killing bob a second time worked somehow"),
+    }
+
+    // even if we cheat and use the API directly
+    match hcor::client_internal::request::<Hackstead, _>(
+        "hackstead/slaughter",
+        &bobstead.profile.steader_id,
+    )
+    .await
     {
-        let res = get_bob().await;
-        assert!(
-            res.status().is_client_error(),
-            concat!(
-                "the backend didn't successfully kill bob, ",
-                "/hackstead/ Response status: {}",
-            ),
-            res.status()
-        );
+        Err(e) => log::info!(
+            "received error as expected killing bob a second time with API: {}",
+            e
+        ),
+        Ok(_) => panic!("killing bob a second time with the API worked somehow"),
     }
 
     Ok(())

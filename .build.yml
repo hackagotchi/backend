@@ -1,7 +1,6 @@
 image: archlinux
 packages:
 - rustup
-- aur/mongodb-bin-4.0
 repositories: {}
 shell: false
 sources:
@@ -10,11 +9,7 @@ tasks:
 - setup: |
     rustup toolchain install nightly
     cd backend/
-    rustup run nightly cargo fetch
-- nightly: |
-    rustup default nightly
+    cargo install cargo-make
+- stable: |
     cd backend/
-    cargo build
-    sudo systemctl start mongodb
-    MONGO_URL=mongodb://localhost:27017 cargo test
-    cargo fmt -- --check
+    cargo make test

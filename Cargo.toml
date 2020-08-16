@@ -6,31 +6,57 @@ edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+
+[[bin]]
+path = "./src/main.rs"
+name = "server"
+required-features = [ "webserver" ]
+
 [[bin]]
 path = "./src/from_csv.rs"
 name = "from_csv"
+required-features = [ "csv_migration" ]
+
+[features]
+hcor_client = [ "hcor/client", "hcor/simultaneous_systems" ]
+awc_test = [ "awc" ]
+csv_migration = [ "csv", "regex" ]
+webserver = [ ]
+autoclose = [ ]
+default = [ "webserver" ]
 
 [dependencies]
-actix-web = "2.0"
-actix-rt = "1.0"
-bson = "1.0"
-serde = { version = "1.0", features = ["derive"] }
-uuid = { version = "0.8", features = ["v4", "serde"] }
-mongodb = "1.0"
-derive_more = "0.99"
-tokio = "0.2"
-reqwest = { version = "0.10", features = [ "json" ] }
-pretty_env_logger = "0.4"
+
+# logging
 log = "0.4"
-csv = "1.1"
-chrono = "0.4"
-serde_json = "1.0"
-regex = "1.3"
+pretty_env_logger = "0.4"
+
+# util
+rand = "0.7.3"
 lazy_static = "1.4"
 futures = "0.3"
 
+# serialization/deserialization
+csv = { version = "1.1", optional = true }
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+chrono = "0.4"
+uuid = { version = "0.8", features = ["v4", "serde"] }
+
+# web
+actix-web = "2.0"
+actix-rt = "1.0"
+tokio = { version = "0.2.22", features = [ "macros" ] }
+actix = "0.9.0"
+actix-web-actors = "2.0.0"
+regex = { version = "1.3.9", optional = true }
+awc = { version = "1.0.1", optional = true }
+bincode = "1.3.1"
+futures-channel = "0.3.5"
+
 [dependencies.hcor]
 git = "https://github.com/hackagotchi/hcor.git"
-branch = "client_feature"
-#path = "../hcor"
-features = [ "actix", "mongo" ]
+branch = "slim"
+# path = "../hcor"
+features = [ "message_derive" ]
