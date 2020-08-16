@@ -10,6 +10,9 @@ use summon::summon;
 mod rub;
 use rub::rub;
 
+mod nickname;
+use nickname::nickname;
+
 mod slaughter;
 
 pub fn handle_ask(ss: &mut SessSend, ask: PlantAsk) -> AskedNote {
@@ -27,6 +30,10 @@ pub fn handle_ask(ss: &mut SessSend, ask: PlantAsk) -> AskedNote {
             tile_id,
             rub_item_id,
         } => PlantRubStartResult(strerr(rub(ss, tile_id, rub_item_id))),
+        Nickname {
+          tile_id,
+          new_name,
+        } => PlantRenameResult(strerr(nickname(ss, tile_id, new_name))),
     }
 }
 /*
