@@ -224,21 +224,16 @@
 //!     }))?,
 //!     Note::Asked {
 //!         ask_id: 1337,
-//!         note: ItemHatchResult(Ok(vec![
-//!             Item {
-//!                 item_id,
+//!         note: ItemHatchResult(Ok(vec![{
+//!             let mut item = Item::from_archetype_handle(
+//!                 5,
 //!                 owner_id,
-//!                 archetype_handle: 5,
-//!                 gotchi: None,
-//!                 ownership_log: vec![
-//!                     LoggedOwner {
-//!                         logged_owner_id: owner_id,
-//!                         owner_index: 0,
-//!                         acquisition: Acquisition::Farmed
-//!                     }
-//!                 ]
-//!             }
-//!         ]))
+//!                 Acquisition::Farmed
+//!             ).unwrap();
+//!             item.item_id = item_id;
+//!
+//!             item
+//!         }]))
 //!     }
 //! );
 //! // or perhaps the Ask fails,
