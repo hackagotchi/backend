@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use actix::{Actor, Addr, Context, Handler, Message};
+use actix::{dev::Envelope, Actor, Addr, Context, Handler, Message};
 
 use super::session::{self, Session};
 use hcor::{IdentifiesSteader, Note, SteaderId};
@@ -68,6 +68,20 @@ impl Handler<GetSession> for Server {
 
     fn handle(&mut self, GetSession(sr): GetSession, _: &mut Context<Self>) -> Self::Result {
         self.sessions.get(&sr).cloned()
+    }
+}
+
+/// Get the Session associated with a user, if there is one currently registered for them.
+#[derive(Message)]
+#[rtype(result = "()")]
+pub struct HandleEnvelope(pub Envelope<Server>);
+
+impl Handler<HandleEnvelope> for Server {
+    type Result = ();
+
+    fn handle(&mut self, HandleEnvelope(mut e): HandleEnvelope, ctx: &mut Context<Self>) {
+        use actix::dev::EnvelopeProxy;
+        e.handle(self, ctx)
     }
 }
 

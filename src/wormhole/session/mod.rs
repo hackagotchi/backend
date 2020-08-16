@@ -1,7 +1,10 @@
 use std::time::Instant;
 
-use actix::{Actor, ActorContext, Addr, AsyncContext, Handler, MailboxError, StreamHandler};
+use actix::{
+    dev::Envelope, Actor, ActorContext, Addr, AsyncContext, Handler, MailboxError, StreamHandler,
+};
 use actix_web_actors::ws;
+use futures_channel::oneshot;
 use log::*;
 
 use super::server::{self, Server};
@@ -63,14 +66,35 @@ impl Session {
         }
     }
 
-    fn spawn_ask_handler(&self, ctx: &SessionContext, ask: AskMessage) {
-        let ss = SessSend::new(self.hackstead.clone(), ctx.address(), self.server.clone());
-        actix::spawn(async {
-            handle_ask(ss, ask)
-                .await
-                .map(|_| ())
-                .unwrap_or_else(|e| error!("couldn't handle ask: {}", e))
-        });
+    fn apply_change(
+        &mut self,
+        ctx: &mut SessionContext,
+        sss: SessSendSubmit,
+        sess_send: SessSend,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = ()>>> {
+        match sss {
+            SessSendSubmit::Submit => sess_send.submit(self, ctx),
+            SessSendSubmit::Cancel(note) => self.send_note(ctx, &note),
+            SessSendSubmit::ServerRelinquishAsk { msg, ask_id } => {
+                let server = self.server.clone();
+                let session = ctx.address();
+                return Box::pin(async move {
+                    async move {
+                        let note = msg.send(&server).await;
+                        session.send(SendNote(Note::Asked { note, ask_id })).await
+                    }
+                    .await
+                    .unwrap_or_else(|e| error!("couldn't relinquish task to server: {}", e));
+                });
+            }
+        }
+
+        Box::pin(async move { () })
+    }
+
+    fn spawn_ask_handler(&mut self, ctx: &mut SessionContext, ask: AskMessage) {
+        let mut ss = SessSend::new(self.hackstead.clone());
+        actix::spawn(self.apply_change(ctx, handle_ask(&mut ss, ask).into(), ss))
     }
 
     /// This function is responsible for sending messages to the client to assure that we're still
@@ -160,38 +184,53 @@ impl Handler<DoAsk> for Session {
     type Result = actix::ResponseFuture<Result<AskedNote, MailboxError>>;
 
     fn handle(&mut self, DoAsk(ask): DoAsk, ctx: &mut Self::Context) -> Self::Result {
-        let ss = SessSend::new(self.hackstead.clone(), ctx.address(), self.server.clone());
-        Box::pin(handle_ask(ss, AskMessage { ask, ask_id: 1337 }))
+        let mut ss = SessSend::new(self.hackstead.clone());
+        let HandledAsk { kind, ask_id } = handle_ask(&mut ss, AskMessage { ask, ask_id: 1337 });
+
+        match kind {
+            HandledAskKind::Direct(note) => {
+                let f = self.apply_change(
+                    ctx,
+                    HandledAsk {
+                        kind: HandledAskKind::Direct(note.clone()),
+                        ask_id,
+                    }
+                    .into(),
+                    ss,
+                );
+                Box::pin(async move {
+                    f.await;
+                    Ok(note)
+                })
+            }
+            HandledAskKind::ServerRelinquish(msg) => {
+                let server = self.server.clone();
+                Box::pin(async move { Ok(msg.send(&server).await) })
+            }
+        }
     }
 }
 
 #[derive(actix::Message)]
-#[rtype(result = "()")]
-pub struct ChangeStead(Hackstead);
+#[rtype(result = "Result<(), ()>")]
+pub struct ChangeStead<F: FnOnce(&mut SessSend) -> SessSendSubmit + Send + 'static>(F);
 
-impl Handler<ChangeStead> for Session {
-    type Result = ();
+impl<F: FnOnce(&mut SessSend) -> SessSendSubmit + Send + 'static> Handler<ChangeStead<F>>
+    for Session
+{
+    type Result = actix::ResponseFuture<Result<(), ()>>;
 
-    fn handle(&mut self, ChangeStead(mut new): ChangeStead, ctx: &mut Self::Context) {
-        use hcor::serde_diff::Diff;
-
-        let old = self.hackstead.clone();
-        assert_eq!(new.local_version, old.local_version);
-
-        self.send_note(
-            ctx,
-            &Note::Edit(match self.orifice {
-                Orifice::Json => {
-                    EditNote::Json(serde_json::to_string(&Diff::serializable(&old, &new)).unwrap())
-                }
-                Orifice::Bincode => {
-                    EditNote::Bincode(bincode::serialize(&Diff::serializable(&old, &new)).unwrap())
-                }
-            }),
-        );
-
-        new.local_version += 1;
-        self.hackstead = new;
+    fn handle(
+        &mut self,
+        ChangeStead(change): ChangeStead<F>,
+        ctx: &mut Self::Context,
+    ) -> Self::Result {
+        let mut sess_send = SessSend::new(self.hackstead.clone());
+        let f = self.apply_change(ctx, change(&mut sess_send), sess_send);
+        Box::pin(async move {
+            f.await;
+            Ok(())
+        })
     }
 }
 
@@ -248,7 +287,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
     }
 }
 
-fn strerr<T, E: ToString>(r: Result<T, E>) -> Result<T, String> {
+pub fn strerr<T, E: ToString>(r: Result<T, E>) -> Result<T, String> {
     r.map_err(|e| e.to_string())
 }
 
@@ -265,32 +304,18 @@ fn strerr<T, E: ToString>(r: Result<T, E>) -> Result<T, String> {
 /// and also exposes the addresses of the user's hackstead and server, so that
 /// you can send them messages directly if need be.
 pub struct SessSend {
-    pub session: Addr<Session>,
-    pub server: Addr<Server>,
     pub pending_timers: Vec<hcor::plant::Timer>,
     pub pending_notes: Vec<Note>,
     pub hackstead: Hackstead,
 }
 impl SessSend {
-    /// Create a new SessSend using the data we need from a Session.
-    pub fn new(hackstead: Hackstead, session: Addr<Session>, server: Addr<Server>) -> Self {
+    /// Create a new SessSend
+    pub fn new(hackstead: Hackstead) -> Self {
         Self {
             pending_timers: vec![],
             pending_notes: vec![],
             hackstead,
-            session,
-            server,
         }
-    }
-
-    /// Create a SessSend without a Hackstead by querying the underlying Session Address; may take
-    /// significantly longer than `SessSend::new` and should therefore be avoided wherever
-    /// possible.
-    pub async fn lookup_from_addrs(
-        session: Addr<Session>,
-        server: Addr<Server>,
-    ) -> Result<Self, MailboxError> {
-        Ok(Self::new(session.send(GetStead).await?, session, server))
     }
 
     /// Schedule a Note to be sent to this user when this SessSend is submitted.
@@ -303,31 +328,49 @@ impl SessSend {
         self.pending_timers.push(t);
     }
 
+    pub async fn submit_afar(self, addr: &Addr<Session>) -> Result<(), MailboxError> {
+        addr.send(ChangeStead(|ss| {
+            *ss = self;
+            SessSendSubmit::Submit
+        }))
+        .await?
+        .unwrap();
+
+        Ok(())
+    }
+
     /// Consumes a `SessSend`, sending all of the desired changes to the user's Session to be
     /// applied.
-    pub async fn submit(self) -> Result<(), MailboxError> {
-        use futures::stream::{StreamExt, TryStreamExt};
+    pub fn submit(self, session: &mut Session, ctx: &mut SessionContext) {
+        use hcor::serde_diff::Diff;
+
         let Self {
-            session,
+            hackstead: mut new,
+            mut pending_notes,
             pending_timers,
-            pending_notes,
-            hackstead,
             ..
         } = self;
 
-        futures::try_join!(
-            futures::stream::iter(pending_timers)
-                .map(|t| session.send(StartTimer(t)))
-                .buffer_unordered(10)
-                .try_for_each_concurrent(None, |t| async move { Ok(t) }),
-            futures::stream::iter(pending_notes)
-                .map(|n| session.send(SendNote(n)))
-                .buffer_unordered(10)
-                .try_for_each_concurrent(None, |n| async move { Ok(n) }),
-            session.send(ChangeStead(hackstead))
-        )?;
+        let old = session.hackstead.clone();
+        assert_eq!(new.local_version, old.local_version);
+        pending_notes.push(Note::Edit(match session.orifice {
+            Orifice::Json => {
+                EditNote::Json(serde_json::to_string(&Diff::serializable(&old, &new)).unwrap())
+            }
+            Orifice::Bincode => {
+                EditNote::Bincode(bincode::serialize(&Diff::serializable(&old, &new)).unwrap())
+            }
+        }));
+        new.local_version += 1;
+        session.hackstead = new;
 
-        Ok(())
+        for n in pending_notes {
+            session.send_note(ctx, &n);
+        }
+
+        for t in pending_timers {
+            session.ticker.start(t);
+        }
     }
 }
 impl std::ops::Deref for SessSend {
@@ -343,13 +386,60 @@ impl<'a> std::ops::DerefMut for SessSend {
     }
 }
 
+pub enum SessSendSubmit {
+    Cancel(Note),
+    ServerRelinquishAsk { msg: NoteEnvelope, ask_id: usize },
+    Submit,
+}
+impl From<HandledAsk> for SessSendSubmit {
+    fn from(HandledAsk { kind, ask_id }: HandledAsk) -> Self {
+        match kind {
+            HandledAskKind::Direct(note) if note.err().is_none() => SessSendSubmit::Submit,
+            HandledAskKind::Direct(note) => SessSendSubmit::Cancel(Note::Asked { note, ask_id }),
+            HandledAskKind::ServerRelinquish(msg) => {
+                SessSendSubmit::ServerRelinquishAsk { msg, ask_id }
+            }
+        }
+    }
+}
+
+pub struct NoteEnvelope {
+    envelope: Envelope<super::Server>,
+    hook: oneshot::Receiver<AskedNote>,
+}
+impl NoteEnvelope {
+    fn new<M>(msg: M) -> Self
+    where
+        super::Server: Handler<M>,
+        M: actix::Message<Result = AskedNote> + Send + 'static,
+    {
+        let (tx, hook) = oneshot::channel();
+        Self {
+            envelope: Envelope::new(msg, Some(tx)),
+            hook,
+        }
+    }
+
+    async fn send(self, server: &Addr<Server>) -> AskedNote {
+        let NoteEnvelope { envelope, hook } = self;
+        server.do_send(server::HandleEnvelope(envelope));
+        hook.await.expect("receiver somehow cancelled")
+    }
+}
+
+enum HandledAskKind {
+    Direct(AskedNote),
+    ServerRelinquish(NoteEnvelope),
+}
+pub struct HandledAsk {
+    ask_id: usize,
+    kind: HandledAskKind,
+}
+
 /// If the ask fails for whatever reason, the `SessSend` is not submitted,
 /// and therefore no changes are made to the user's session,
 /// in the form of hackstead mutations or set timers.
-async fn handle_ask(
-    mut ss: SessSend,
-    AskMessage { ask, ask_id }: AskMessage,
-) -> Result<AskedNote, MailboxError> {
+fn handle_ask(ss: &mut SessSend, AskMessage { ask, ask_id }: AskMessage) -> HandledAsk {
     use hcor::wormhole::{Ask::*, AskedNote::*};
 
     trace!(
@@ -359,27 +449,27 @@ async fn handle_ask(
         ask
     );
 
-    let note = match ask {
-        KnowledgeSnort { xp } => KnowledgeSnortResult(Ok({
-            let hs = &mut ss.hackstead;
-            hs.profile.xp += xp;
-            hs.profile.xp
-        })),
-        Plant(p) => plant::handle_ask(&mut ss, p),
-        Item(i) => item::handle_ask(&mut ss, i).await,
+    let kind = match ask {
+        KnowledgeSnort { xp } => HandledAskKind::Direct(KnowledgeSnortResult(Ok({
+            ss.profile.xp += xp;
+            ss.profile.xp
+        }))),
+        Plant(p) => HandledAskKind::Direct(plant::handle_ask(ss, p)),
+        Item(i) => item::handle_ask(ss, i),
         TileSummon {
             tile_redeemable_item_id,
-        } => TileSummonResult(strerr(tile::summon(&mut ss, tile_redeemable_item_id))),
+        } => HandledAskKind::Direct(TileSummonResult(strerr(tile::summon(
+            ss,
+            tile_redeemable_item_id,
+        )))),
     };
 
-    ss.send_note(Note::Asked {
-        ask_id,
-        note: note.clone(),
-    });
-
-    if note.err().is_none() {
-        ss.submit().await?;
+    if let HandledAskKind::Direct(note) = &kind {
+        ss.send_note(Note::Asked {
+            ask_id,
+            note: note.clone(),
+        });
     }
 
-    Ok(note)
+    HandledAsk { ask_id, kind }
 }

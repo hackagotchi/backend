@@ -1,7 +1,7 @@
-use super::{strerr, SessSend};
+use super::{strerr, HandledAskKind, SessSend};
 use crate::wormhole::server;
 use hcor::wormhole::{
-    AskedNote::{self, *},
+    AskedNote::*,
     ItemAsk::{self, *},
 };
 
@@ -11,8 +11,8 @@ use spawn::spawn;
 mod hatch;
 use hatch::hatch;
 
-pub async fn handle_ask(ss: &mut SessSend, ask: ItemAsk) -> AskedNote {
-    match ask {
+pub(super) fn handle_ask(ss: &mut SessSend, ask: ItemAsk) -> HandledAskKind {
+    HandledAskKind::Direct(match ask {
         Spawn {
             item_archetype_handle: iah,
             amount,
@@ -20,20 +20,13 @@ pub async fn handle_ask(ss: &mut SessSend, ask: ItemAsk) -> AskedNote {
         Throw {
             receiver_id,
             item_ids,
-        } => ItemThrowResult(
-            match ss
-                .server
-                .send(server::ThrowItems {
-                    sender_id: ss.hackstead.profile.steader_id,
-                    receiver_id,
-                    item_ids,
-                })
-                .await
-            {
-                Ok(r) => strerr(r),
-                Err(e) => Err(format!("couldn't reach server mailbox: {}", e)),
-            },
-        ),
+        } => {
+            return HandledAskKind::ServerRelinquish(super::NoteEnvelope::new(server::ThrowItems {
+                sender_id: ss.hackstead.profile.steader_id,
+                receiver_id,
+                item_ids,
+            }))
+        }
         Hatch { hatchable_item_id } => ItemHatchResult(strerr(hatch(ss, hatchable_item_id))),
-    }
+    })
 }

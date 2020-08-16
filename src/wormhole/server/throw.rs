@@ -1,6 +1,13 @@
 use crate::wormhole::session::SessSend;
-use actix::{AsyncContext, Context, Handler, MailboxError, Message, ResponseFuture};
-use hcor::{id, item, wormhole::RudeNote::ItemThrowReceipt, Item, ItemId, Note, SteaderId};
+use actix::{Context, Handler, MailboxError, Message, ResponseFuture};
+use hcor::{
+    id, item,
+    wormhole::{
+        AskedNote::{self, ItemThrowResult},
+        RudeNote::ItemThrowReceipt,
+    },
+    Item, ItemId, Note, SteaderId,
+};
 use std::fmt;
 
 #[derive(Debug)]
@@ -53,19 +60,37 @@ impl fmt::Display for Error {
 }
 
 #[derive(Message)]
-#[rtype(result = "Result<Vec<Item>, Error>")]
+#[rtype(result = "AskedNote")]
 pub struct ThrowItems {
     pub sender_id: SteaderId,
     pub receiver_id: SteaderId,
     pub item_ids: Vec<ItemId>,
 }
 
+use actix::dev::{MessageResponse, ResponseChannel};
+impl<M> MessageResponse<super::Server, M> for ResponseFuture<AskedNote>
+where
+    M: actix::Message<Result = AskedNote>,
+{
+    fn handle<R: ResponseChannel<M>>(
+        self,
+        _: &mut <super::Server as actix::Actor>::Context,
+        tx: Option<R>,
+    ) {
+        actix::spawn(async move {
+            if let Some(tx) = tx {
+                tx.send(self.await)
+            }
+        })
+    }
+}
+
 /// Sessions must send requests that items are transferred to the Server, because only the Server
 /// is capable of handling interactions between different Sessions.
 impl Handler<ThrowItems> for super::Server {
-    type Result = ResponseFuture<Result<Vec<Item>, Error>>;
+    type Result = ResponseFuture<AskedNote>;
 
-    fn handle(&mut self, ti: ThrowItems, ctx: &mut Context<Self>) -> Self::Result {
+    fn handle(&mut self, ti: ThrowItems, _: &mut Context<Self>) -> Self::Result {
         let ThrowItems {
             sender_id,
             receiver_id,
@@ -74,24 +99,36 @@ impl Handler<ThrowItems> for super::Server {
 
         // unfortunately we have to clone these even though they contain several Arcs so that we
         // can pass them into the 'static future.
-        let ses = |id| self.sessions.get(&id).cloned().ok_or(PartyOffline(id));
-        let tx_ses = ses(sender_id);
-        let rx_ses = ses(receiver_id);
-        let addr = ctx.address();
+        let ses = |id| {
+            let session = self
+                .sessions
+                .get(&id)
+                .cloned()
+                .ok_or_else(|| PartyOffline(id));
+            async move {
+                let ses = session?;
+                <Result<_, Error>>::Ok((
+                    SessSend::new(ses.send(super::session::GetStead).await?),
+                    ses,
+                ))
+            }
+        };
+        let tx = ses(sender_id);
+        let rx = ses(receiver_id);
 
-        Box::pin(async move {
+        let f = async move {
             if sender_id == receiver_id {
                 return Err(SelfGive);
             }
 
-            let mut tx_hs = SessSend::lookup_from_addrs(tx_ses?, addr.clone()).await?;
-            let mut rx_hs = SessSend::lookup_from_addrs(rx_ses?, addr.clone()).await?;
+            let (mut tx_ss, tx_ses) = tx.await?;
+            let (mut rx_ss, rx_ses) = rx.await?;
 
             // n^2 perf right here D:
             let mut items = item_ids
                 .clone()
                 .into_iter()
-                .map(|i| tx_hs.take_item(i))
+                .map(|i| tx_ss.take_item(i))
                 .collect::<Result<Vec<Item>, id::NoSuch>>()?;
 
             for i in &mut items {
@@ -107,17 +144,19 @@ impl Handler<ThrowItems> for super::Server {
                 })
             }
 
-            rx_hs.inventory.append(&mut items.clone());
+            rx_ss.inventory.append(&mut items.clone());
 
-            rx_hs.send_note(Note::Rude(ItemThrowReceipt {
+            rx_ss.send_note(Note::Rude(ItemThrowReceipt {
                 from: sender_id,
                 items: items.clone(),
             }));
 
-            tx_hs.submit().await?;
-            rx_hs.submit().await?;
+            tx_ss.submit_afar(&tx_ses).await?;
+            rx_ss.submit_afar(&rx_ses).await?;
             Ok(items)
-        })
+        };
+
+        Box::pin(async move { ItemThrowResult(super::session::strerr(f.await)) })
     }
 }
 

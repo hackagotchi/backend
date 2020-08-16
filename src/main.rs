@@ -7,6 +7,16 @@ async fn main() -> std::io::Result<()> {
 
     let wormhole = backend::WormholeServer::new().start();
 
+    // create fs dirs where we dump the data, if they don't already exist
+    let mkdir = |name| {
+        std::fs::create_dir(name).unwrap_or_else(|e| match e.kind() {
+            std::io::ErrorKind::AlreadyExists => {}
+            _ => panic!("couldn't make {} folder: {}", name, e),
+        })
+    };
+    mkdir("stead");
+    mkdir("slack");
+
     HttpServer::new(move || {
         App::new().service(
             web::scope("/api")
