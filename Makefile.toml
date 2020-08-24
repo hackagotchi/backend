@@ -51,7 +51,7 @@ script_runner = "@shell"
 script = [
 '''
 git clone https://github.com/hackagotchi/config.git
-git clone https://github.com/hackagotchi/hcor.git --branch heck
+git clone https://github.com/hackagotchi/hcor.git --branch staging
 cd hcor
 cargo r --bin verify --features=config_verify
 export CONFIG_PATH=./config
