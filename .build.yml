@@ -12,4 +12,4 @@ tasks:
     cargo install cargo-make
 - stable: |
     cd backend/
-    cargo make test
+    cargo make build-config-and-test
