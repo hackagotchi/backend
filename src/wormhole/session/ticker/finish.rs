@@ -37,17 +37,15 @@ pub fn finish_timer(
     let plant = hs.plant_mut(tile_id)?;
     Ok(match kind {
         Yield => RudeNote::YieldFinish {
-            items: vec![],
-            xp: 0,
+            output: Default::default(),
             tile_id,
         },
         Craft { recipe_index } => RudeNote::CraftFinish {
-            items: vec![],
-            xp: 0,
+            output: Default::default(),
             tile_id,
         },
         Rub { effect_id } => RudeNote::RubEffectFinish {
-            effect: plant.take_effect(effect_id)?,
+            effect: plant.take_rub_effect(effect_id)?,
             tile_id,
         },
     })

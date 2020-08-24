@@ -3,7 +3,9 @@
 
 use std::collections::HashMap;
 
-use actix::{dev::Envelope, Actor, Addr, AsyncContext, Context, Handler, Message};
+#[cfg(feature = "autoclose")]
+use actix::AsyncContext;
+use actix::{dev::Envelope, Actor, Addr, Context, Handler, Message};
 use log::*;
 
 use super::session::{self, Session};
@@ -37,6 +39,7 @@ pub struct Disconnect(pub SteaderId);
 impl Handler<Disconnect> for Server {
     type Result = ();
 
+    #[allow(unused_variables)]
     fn handle(&mut self, Disconnect(u): Disconnect, ctx: &mut Context<Self>) {
         self.sessions.remove(&u);
 
@@ -44,8 +47,8 @@ impl Handler<Disconnect> for Server {
 
         #[cfg(feature = "autoclose")]
         if self.sessions.len() == 0 {
-            warn!("ending process in 30 seconds if no more users log on");
-            ctx.run_later(std::time::Duration::from_secs(30), |act, _| {
+            warn!("ending process in 100 seconds if no more users log on");
+            ctx.run_later(std::time::Duration::from_secs(100), |act, _| {
                 if act.sessions.len() == 0 {
                     warn!("ending process");
                     std::process::exit(0)

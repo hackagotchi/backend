@@ -251,7 +251,7 @@ mod test {
         // eve
         let t2 = std::thread::spawn(move || {
             System::new("test").block_on(async move {
-                const ITEM_ARCHETYPE: hcor::config::ArchetypeHandle = 0;
+                let item_conf = *hcor::CONFIG.items.keys().next().unwrap();
                 const ITEM_SPAWN_COUNT: usize = 10;
 
                 let evestead = Hackstead::register().await.unwrap();
@@ -259,7 +259,7 @@ mod test {
 
                 // spawn eve items and verify that they log her as the owner
                 let items = bobstead
-                    .spawn_items(ITEM_ARCHETYPE, ITEM_SPAWN_COUNT)
+                    .spawn_items(item_conf, ITEM_SPAWN_COUNT)
                     .await
                     .unwrap();
                 for item in &items {

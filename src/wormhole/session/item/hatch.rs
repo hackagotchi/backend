@@ -1,5 +1,5 @@
 use super::SessSend;
-use hcor::{id, item, Item, ItemId};
+use hcor::{config::evalput, id, item, Item, ItemId};
 use std::fmt;
 
 #[derive(Debug)]
@@ -23,34 +23,26 @@ impl fmt::Display for Error {
             NotConfigured(i) => write!(
                 f,
                 "provided item {}, which, as a {}[{}], is not configured to be hatched",
-                i.item_id, i.name, i.archetype_handle
+                i.item_id, i.name, i.conf
             ),
         }
     }
 }
 
-pub fn hatch(ss: &mut SessSend, item_id: ItemId) -> Result<Vec<Item>, Error> {
+pub fn hatch(ss: &mut SessSend, item_id: ItemId) -> Result<evalput::Output<Item>, Error> {
     let item = ss.take_item(item_id)?;
     let hatch_table = item
         .hatch_table
         .as_ref()
         .ok_or_else(|| NotConfigured(item.clone()))?;
 
-    let items = hcor::config::spawn(&hatch_table, &mut rand::thread_rng())
-        .map(|item_name| {
-            Item::from_archetype(
-                hcor::CONFIG.find_possession(&item_name)?,
-                item.owner_id,
-                item::Acquisition::Hatched,
-            )
-        })
-        .collect::<Result<Vec<Item>, hcor::ConfigError>>()
-        .unwrap_or_else(|e| {
-            panic!("hatch table produced: {}", e);
-        });
+    let output = hatch_table
+        .evaluated(&mut rand::thread_rng())
+        .spawned(item.owner_id, item::Acquisition::Hatched);
 
-    ss.inventory.append(&mut items.clone());
-    Ok(items)
+    output.copy_into(&mut *ss);
+
+    Ok(output)
 }
 
 #[cfg(all(test, feature = "hcor_client"))]
@@ -69,20 +61,20 @@ mod test {
         let mut bobstead = Hackstead::register().await?;
 
         debug!("finding prequisites in config...");
-        let unhatchable_arch = hcor::CONFIG
-            .possession_archetypes
-            .iter()
+        let unhatchable_config = hcor::CONFIG
+            .items
+            .values()
             .find(|x| x.hatch_table.is_none())
             .expect("no unhatchable items in config?");
-        let hatchable_arch = hcor::CONFIG
-            .possession_archetypes
-            .iter()
+        let hatchable_config = hcor::CONFIG
+            .items
+            .values()
             .find(|x| x.hatch_table.is_some())
             .expect("no unhatchable items in config?");
 
         debug!("to prepare, we need to spawn bob hatchable and unhatchable items.");
-        let unhatchable_item = unhatchable_arch.spawn().await?;
-        let hatchable_item = hatchable_arch.spawn().await?;
+        let unhatchable_item = unhatchable_config.spawn().await?;
+        let hatchable_item = hatchable_config.spawn().await?;
         bobstead = Hackstead::fetch(&bobstead).await?;
 
         debug!("let's start off by hatching the unhatchable and making sure that doesn't work.");
@@ -100,7 +92,7 @@ mod test {
         );
 
         debug!("great, now let's try actually hatching something hatchable!");
-        let hatched_items = hatchable_item.hatch().await?;
+        let hatch_output = hatchable_item.hatch().await?;
 
         debug!(
             "let's make sure bob's inventory grew proportionally \
@@ -109,13 +101,13 @@ mod test {
         let starting_inventory = bobstead.inventory.clone();
         let new_inventory = Hackstead::fetch(&bobstead).await?.inventory;
         assert_eq!(
-            hatched_items.len(),
+            hatch_output.items.len(),
             (new_inventory.len() - (starting_inventory.len() - 1)),
             "the number of items in bob's inventory changed differently \
             than the number of items produced by hatching this item, somehow. \
             starting inventory: {:#?}\nitems hatched: {:#?}\nnew inventory: {:#?}",
             starting_inventory,
-            hatched_items,
+            hatch_output.items,
             new_inventory,
         );
 
