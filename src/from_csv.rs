@@ -215,13 +215,16 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     plant: p.map(|p| {
                         let conf = plant_rows_to_uuids[&p.archetype_handle];
                         hcor::Plant {
-                            xp: p.xp,
                             owner_id: hs.profile.steader_id,
                             conf,
                             nickname: conf.name.clone(),
                             tile_id,
                             lifetime_rubs: p.effects.len(),
-                            skills: plant::Skills::empty(),
+                            skills: {
+                                let mut skills = plant::Skills::new(conf);
+                                skills.xp = p.xp;
+                                skills
+                            },
                             rub_effects: p
                                 .effects
                                 .into_iter()

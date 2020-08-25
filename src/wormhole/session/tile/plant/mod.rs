@@ -10,6 +10,9 @@ use summon::summon;
 mod rub;
 use rub::rub;
 
+mod skill_unlock;
+use skill_unlock::skill_unlock;
+
 mod slaughter;
 
 pub fn handle_ask(ss: &mut SessSend, ask: PlantAsk) -> AskedNote {
@@ -19,12 +22,28 @@ pub fn handle_ask(ss: &mut SessSend, ask: PlantAsk) -> AskedNote {
             seed_item_id,
         } => PlantSummonResult(strerr(summon(ss, tile_id, seed_item_id))),
         Slaughter { tile_id } => PlantSlaughterResult(strerr(ss.take_plant(tile_id))),
-        Craft { .. } => PlantCraftStartResult(strerr(Err("unimplemented route"))),
-        Nickname { .. } => PlantNicknameResult(strerr(Err("unimplemented route"))),
+        KnowledgeSnort { tile_id, xp } => {
+            PlantKnowledgeSnortResult(strerr(ss.plant_mut(tile_id).map(|p| {
+                p.skills.xp += xp;
+                p.skills.xp
+            })))
+        }
         Rub {
             tile_id,
             rub_item_id,
         } => PlantRubStartResult(strerr(rub(ss, tile_id, rub_item_id))),
+        Craft { .. } => PlantCraftStartResult(strerr(Err("unimplemented route"))),
+        Nickname { .. } => PlantNicknameResult(strerr(Err("unimplemented route"))),
+        SkillUnlock {
+            tile_id,
+            source_skill_conf,
+            unlock_index,
+        } => PlantSkillUnlockResult(strerr(skill_unlock(
+            ss,
+            tile_id,
+            source_skill_conf,
+            unlock_index,
+        ))),
     }
 }
 /*
