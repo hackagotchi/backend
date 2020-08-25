@@ -50,7 +50,7 @@ args = [ "r", "--bin", "verify", "--features=config_verify" ]
 script_runner = "@shell"
 script = [
 '''
-git clone https://github.com/hackagotchi/config.git
+git clone https://github.com/hackagotchi/config.git --branch staging
 git clone https://github.com/hackagotchi/hcor.git --branch staging
 cd hcor
 cargo r --bin verify --features=config_verify
