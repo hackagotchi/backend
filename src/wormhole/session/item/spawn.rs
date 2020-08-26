@@ -65,7 +65,7 @@ mod test {
 
         debug!("spawn bob some items and refresh his stead");
         let items = bobstead.spawn_items(ITEM_CONF, ITEM_SPAWN_COUNT).await?;
-        bobstead = Hackstead::fetch(&bobstead).await?;
+        bobstead.server_sync().await?;
 
         debug!("make sure those new items are in there");
         assert_eq!(

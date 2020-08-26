@@ -47,13 +47,31 @@ impl Handler<Disconnect> for Server {
 
         #[cfg(feature = "autoclose")]
         if self.sessions.len() == 0 {
-            warn!("ending process in 100 seconds if no more users log on");
-            ctx.run_later(std::time::Duration::from_secs(100), |act, _| {
-                if act.sessions.len() == 0 {
-                    warn!("ending process");
-                    std::process::exit(0)
-                }
-            });
+            lazy_static::lazy_static! {
+            pub static ref NO_CLIENT_TIMEOUT: u64 = {
+                std::env::var("NO_CLIENT_TIMEOUT")
+                    .map_err(|e| e.to_string())
+                    .and_then(|x| x.parse::<u64>().map_err(|e| e.to_string()))
+                    .unwrap_or_else(|e| {
+                        log::warn!("NO_CLIENT_TIMEOUT err, defaulting to 100. err: {}", e);
+                        100
+                    })
+            };
+            }
+
+            warn!(
+                "ending process in {} seconds if no more users log on",
+                *NO_CLIENT_TIMEOUT
+            );
+            ctx.run_later(
+                std::time::Duration::from_secs(*NO_CLIENT_TIMEOUT),
+                |act, _| {
+                    if act.sessions.len() == 0 {
+                        warn!("ending process");
+                        std::process::exit(0)
+                    }
+                },
+            );
         }
     }
 }

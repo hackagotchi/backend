@@ -53,6 +53,7 @@ mod test {
     async fn hatch() -> hcor::ClientResult<()> {
         use hcor::Hackstead;
         use log::*;
+        use tokio::time::{delay_for, Duration};
 
         // attempt to establish logging, do nothing if it fails
         // (it probably fails because it's already been established in another test)
@@ -75,7 +76,7 @@ mod test {
         debug!("to prepare, we need to spawn bob hatchable and unhatchable items.");
         let unhatchable_item = unhatchable_config.spawn().await?;
         let hatchable_item = hatchable_config.spawn().await?;
-        bobstead = Hackstead::fetch(&bobstead).await?;
+        bobstead.server_sync().await?;
 
         debug!("let's start off by hatching the unhatchable and making sure that doesn't work.");
         match unhatchable_item.hatch().await {
@@ -87,11 +88,18 @@ mod test {
         }
         assert_eq!(
             bobstead.inventory.len(),
-            Hackstead::fetch(&bobstead).await?.inventory.len(),
+            {
+                delay_for(Duration::from_millis(400)).await;
+                bobstead.server_sync().await?;
+                bobstead.inventory.len()
+            },
             "failing to hatch modified inventory item count somehow",
         );
 
-        debug!("great, now let's try actually hatching something hatchable!");
+        debug!(
+            "great, now let's try actually hatching something hatchable ({})!",
+            hatchable_item.name
+        );
         let hatch_output = hatchable_item.hatch().await?;
 
         debug!(
@@ -99,7 +107,10 @@ mod test {
           to the amount of items hatching produced"
         );
         let starting_inventory = bobstead.inventory.clone();
-        let new_inventory = Hackstead::fetch(&bobstead).await?.inventory;
+
+        delay_for(Duration::from_millis(400)).await;
+        bobstead.server_sync().await?;
+        let new_inventory = bobstead.inventory.clone();
         assert_eq!(
             hatch_output.items.len(),
             (new_inventory.len() - (starting_inventory.len() - 1)),
@@ -126,7 +137,6 @@ mod test {
 
         debug!("kill bob so he's not left in the database");
         bobstead.slaughter().await?;
-
         Ok(())
     }
 }

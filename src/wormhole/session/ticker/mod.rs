@@ -1,4 +1,4 @@
-use super::{Session, SessionContext};
+use super::{SessSend, SessSendSubmit};
 use hcor::{plant, Hackstead, Note};
 
 mod finish;
@@ -25,7 +25,7 @@ impl Ticker {
         self.timers.push(timer);
     }
 
-    pub fn tick(&mut self, ses: &mut Session, ctx: &mut SessionContext) {
+    pub fn tick(&mut self, ss: &mut SessSend) -> SessSendSubmit {
         for (i, t) in &mut self.timers.iter_mut().enumerate() {
             t.until_finish -= 1.0;
 
@@ -46,10 +46,12 @@ impl Ticker {
                 Lifecycle::Annual => self.timers.swap_remove(i),
             };
 
-            match finish_timer(&mut ses.hackstead, ctx, timmy) {
-                Ok(n) => ses.send_note(ctx, &Note::Rude(n)),
+            match finish_timer(ss, timmy) {
+                Ok(n) => ss.send_note(Note::Rude(n)),
                 Err(e) => log::error!("error finishing timer {:#?}: {}", timmy, e),
             }
         }
+
+        SessSendSubmit::Submit
     }
 }

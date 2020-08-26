@@ -1,9 +1,8 @@
-use super::SessionContext;
+use super::SessSend;
 use hcor::{
     id,
     plant::{Timer, TimerKind},
     wormhole::RudeNote,
-    Hackstead,
 };
 use std::fmt;
 
@@ -28,13 +27,12 @@ impl fmt::Display for Error {
 }
 
 pub fn finish_timer(
-    hs: &mut Hackstead,
-    _: &mut SessionContext,
+    ss: &mut SessSend,
     Timer { tile_id, kind, .. }: Timer,
 ) -> Result<RudeNote, Error> {
     use TimerKind::*;
 
-    let plant = hs.plant_mut(tile_id)?;
+    let plant = ss.plant_mut(tile_id)?;
     Ok(match kind {
         Yield => RudeNote::YieldFinish {
             output: Default::default(),

@@ -440,7 +440,7 @@
 #![allow(clippy::many_single_char_names)]
 //#![forbid(missing_docs)]
 #![forbid(unsafe_code)]
-#![forbid(intra_doc_link_resolution_failure)]
+#![forbid(broken_intra_doc_links)]
 use actix_web::{error::ResponseError, HttpResponse};
 use log::*;
 use std::fmt;

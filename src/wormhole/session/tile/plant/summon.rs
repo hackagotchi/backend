@@ -122,7 +122,7 @@ mod test {
                 (false, Ok(tile)) => panic!("/plant/new unexpectedly returned plant: {:#?}", tile),
             };
 
-            *bobstead = Hackstead::fetch(&*bobstead).await?;
+            bobstead.server_sync().await?;
 
             assert_eq!(
                 assumptions.item_consumed,

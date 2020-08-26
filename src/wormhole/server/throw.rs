@@ -195,7 +195,7 @@ mod test {
                     timeout(SERVER_WAIT, until).await.expect("timeout").unwrap();
 
                 // verify the items log eve then bob as the owners
-                bobstead = Hackstead::fetch(&bobstead).await.unwrap();
+                bobstead.server_sync().await.unwrap();
                 let evestead = Hackstead::fetch(eve_steader_id).await.unwrap();
                 for item in &items {
                     assert!(

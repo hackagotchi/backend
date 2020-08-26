@@ -108,7 +108,7 @@ mod test {
         let rub_item = rub_config.spawn().await?;
         let effects = plant.rub_with(&rub_item).await?;
 
-        bobstead = Hackstead::fetch(&bobstead).await?;
+        bobstead.server_sync().await?;
         plant = bobstead.plant(&plant).unwrap().clone();
         assert_eq!(
             plant.rub_effects, effects,
