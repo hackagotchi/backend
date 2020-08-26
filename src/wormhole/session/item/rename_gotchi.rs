@@ -63,7 +63,6 @@ mod test {
             .await?;
         debug!("Rename the first one");
         bobstead = Hackstead::fetch(&bobstead).await?;
-        
 
         debug!("make sure those new items are in there");
         assert_eq!(
