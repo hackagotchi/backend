@@ -96,7 +96,7 @@ mod test {
         let seed_item = seed_config.spawn().await?;
         let tile = bobstead.free_tile().expect("new hackstead no open tiles");
         let plant = tile.plant_seed(&seed_item).await?;
-        assert!(plant.skills.available_points() == 0);
+        assert!(plant.skills.available_points(0) == 0);
         let next_skill_unlock = plant
             .skills
             .unlocked

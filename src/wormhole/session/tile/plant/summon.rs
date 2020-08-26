@@ -1,6 +1,5 @@
 use super::SessSend;
 use hcor::{id, plant, Item, ItemId, Plant, TileId};
-use log::*;
 use std::fmt;
 
 #[derive(Debug)]

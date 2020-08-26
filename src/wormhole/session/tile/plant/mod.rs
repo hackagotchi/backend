@@ -23,7 +23,8 @@ pub fn handle_ask(ss: &mut SessSend, ask: PlantAsk) -> AskedNote {
         } => PlantSummonResult(strerr(summon(ss, tile_id, seed_item_id))),
         Slaughter { tile_id } => PlantSlaughterResult(strerr(ss.take_plant(tile_id))),
         KnowledgeSnort { tile_id, xp } => PlantKnowledgeSnortResult(strerr({
-            ss.ticker.increase_xp(tile_id, xp as f32)
+            ss.ticker
+                .increase_xp(tile_id, xp as f32)
                 .map(|_| ss.ticker.xp(tile_id) as usize)
                 .map_err(|_| format!("couldn't knowledge snort, no such plant, {}", tile_id))
         })),

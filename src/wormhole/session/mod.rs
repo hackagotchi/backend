@@ -362,7 +362,7 @@ impl SessSend {
     pub fn submit(mut self, session: &mut Session, ctx: &mut SessionContext) {
         for t in self.pending_timers.drain(..).collect::<Vec<_>>() {
             match session.ticker.start(&mut self, t) {
-                Ok(()) => {},
+                Ok(()) => {}
                 Err(e) => log::error!("couldn't start timer {:#?}: {}", t, e),
             }
         }

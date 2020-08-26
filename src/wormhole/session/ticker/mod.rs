@@ -132,7 +132,7 @@ impl Ticker {
             match finish_timer(ss, shartim, servtim) {
                 Ok(Some(n)) => ss.send_note(Note::Rude(n)),
                 Err(e) => log::error!("error finishing timer {:#?}: {}", shartim, e),
-                _ => {},
+                _ => {}
             }
         }
 

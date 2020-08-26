@@ -47,6 +47,6 @@ pub fn finish_timer(
             effect: plant.take_rub_effect(effect_id)?,
             tile_id,
         },
-        Xp => return Ok(None)
+        Xp => return Ok(None),
     }))
 }

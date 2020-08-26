@@ -220,11 +220,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             nickname: conf.name.clone(),
                             tile_id,
                             lifetime_rubs: p.effects.len(),
-                            skills: {
-                                let mut skills = plant::Skills::new(conf);
-                                skills.xp = p.xp;
-                                skills
-                            },
+                            skills: plant::Skills::new(conf),
+                            timers: vec![],
+                            xp: p.xp,
                             rub_effects: p
                                 .effects
                                 .into_iter()
