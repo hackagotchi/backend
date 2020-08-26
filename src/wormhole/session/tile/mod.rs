@@ -26,7 +26,7 @@ impl fmt::Display for Error {
             NotConfigured(item) => write!(
                 f,
                 "item {}[{}] is not configured to unlock land",
-                item.name, item.archetype_handle,
+                item.name, item.conf,
             ),
             Ineligible => write!(f, "you aren't eligible to unlock more land."),
         }
@@ -66,19 +66,19 @@ mod test {
         // (it probably fails because it's already been established in another test)
         drop(pretty_env_logger::try_init());
 
-        let requires_xp_arch = hcor::CONFIG
+        let requires_xp_config = hcor::CONFIG
             .land_unlockers()
             .find(|(ul, _)| ul.requires_xp)
             .expect("no items in config that unlock land and require xp to do so?")
             .1;
-        let no_requires_xp_arch = hcor::CONFIG
+        let no_requires_xp_config = hcor::CONFIG
             .land_unlockers()
             .find(|(ul, _)| !ul.requires_xp)
             .expect("no items in config that unlock land and don't require xp to do so?")
             .1;
-        let non_land_redeemable_arch = hcor::CONFIG
-            .possession_archetypes
-            .iter()
+        let non_land_redeemable_config = hcor::CONFIG
+            .items
+            .values()
             .find(|x| x.unlocks_land.is_none())
             .expect("no items in config that don't unlock land?");
 
@@ -110,7 +110,7 @@ mod test {
                 (false, Ok(tile)) => panic!("/tile/new unexpectedly returned tile: {:#?}", tile),
             };
 
-            *bobstead = Hackstead::fetch(&*bobstead).await?;
+            bobstead.server_sync().await?;
 
             assert_eq!(
                 bobstead.land.len(),
@@ -133,7 +133,7 @@ mod test {
         }
 
         debug!("spawn bob an item he can redeem for a tile if he has enough xp");
-        let requires_xp_item = requires_xp_arch.spawn().await?;
+        let requires_xp_item = requires_xp_config.spawn().await?;
 
         debug!("try and redeem this item bob doesn't have enough xp to redeem for land");
         new_tile_assuming(
@@ -148,7 +148,7 @@ mod test {
         .await?;
 
         debug!("spawn an item bob can redeem for land without having enough xp");
-        let no_requires_xp_item = no_requires_xp_arch.spawn().await?;
+        let no_requires_xp_item = no_requires_xp_config.spawn().await?;
 
         debug!("try and redeem that item, this should actually work");
         new_tile_assuming(
@@ -201,7 +201,7 @@ mod test {
         .await?;
 
         debug!("try to redeem the non-land-redeemable item for land");
-        let non_land_redeemable_item = non_land_redeemable_arch.spawn().await?;
+        let non_land_redeemable_item = non_land_redeemable_config.spawn().await?;
         new_tile_assuming(
             &mut bobstead,
             &non_land_redeemable_item,

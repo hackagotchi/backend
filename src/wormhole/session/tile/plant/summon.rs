@@ -25,12 +25,12 @@ impl fmt::Display for Error {
             NotConfigured(item) => write!(
                 f,
                 "item {}[{}] is not configured to be used as a seed",
-                item.name, item.archetype_handle,
+                item.name, item.conf,
             ),
             AlreadyOccupied(tile_id, plant) => write!(
                 f,
                 "tile {} is already occupied by a {}[{}] plant.",
-                tile_id, plant.name, plant.archetype_handle
+                tile_id, plant.name, plant.conf
             ),
         }
     }
@@ -38,12 +38,9 @@ impl fmt::Display for Error {
 
 pub fn summon(ss: &mut SessSend, tile_id: TileId, item_id: ItemId) -> Result<Plant, Error> {
     let item = ss.take_item(item_id)?;
-    let seed = item
-        .seed
-        .as_ref()
-        .ok_or_else(|| NotConfigured(item.clone()))?;
+    let seed = item.grows_into.ok_or_else(|| NotConfigured(item.clone()))?;
 
-    let plant = Plant::from_seed(item.owner_id, tile_id, seed).unwrap();
+    let plant = Plant::from_conf(item.owner_id, tile_id, seed);
     if let Some(until_finish) = plant.base_yield_duration {
         trace!("adding yield timer");
         ss.set_timer(plant::Timer {
@@ -77,21 +74,21 @@ mod test {
         // (it probably fails because it's already been established in another test)
         drop(pretty_env_logger::try_init());
 
-        let (_, seed_arch) = hcor::CONFIG
+        let (_, seed_config) = hcor::CONFIG
             .seeds()
             .next()
             .expect("no items in config that are seeds?");
-        let not_seed_arch = hcor::CONFIG
-            .possession_archetypes
-            .iter()
-            .find(|a| a.seed.is_none())
+        let not_seed_config = hcor::CONFIG
+            .items
+            .values()
+            .find(|a| a.grows_into.is_none())
             .expect("no items in config that aren't seeds?");
 
         // create bob's stead!
         let mut bobstead = Hackstead::register().await?;
 
-        let seed_item = seed_arch.spawn().await?;
-        let not_seed_item = not_seed_arch.spawn().await?;
+        let seed_item = seed_config.spawn().await?;
+        let not_seed_item = not_seed_config.spawn().await?;
         let open_tile = bobstead.free_tile().expect("fresh hackstead no open land?");
 
         struct NewPlantAssumptions {
@@ -115,8 +112,8 @@ mod test {
                         plant
                     );
                     assert_eq!(
-                        seed_item.seed.as_ref().unwrap().grows_into,
-                        plant.name,
+                        seed_item.grows_into.unwrap(),
+                        plant.conf,
                         "seed grew into unexpected type of plant"
                     );
                 }
@@ -125,7 +122,7 @@ mod test {
                 (false, Ok(tile)) => panic!("/plant/new unexpectedly returned plant: {:#?}", tile),
             };
 
-            *bobstead = Hackstead::fetch(&*bobstead).await?;
+            bobstead.server_sync().await?;
 
             assert_eq!(
                 assumptions.item_consumed,

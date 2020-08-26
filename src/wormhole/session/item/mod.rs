@@ -17,10 +17,8 @@ use rename_gotchi::rename;
 
 pub(super) fn handle_ask(ss: &mut SessSend, ask: ItemAsk) -> HandledAskKind {
     HandledAskKind::Direct(match ask {
-        Spawn {
-            item_archetype_handle: iah,
-            amount,
-        } => ItemSpawnResult(strerr(spawn(ss, iah, amount))),
+        Spawn { item_conf, amount } => ItemSpawnResult(strerr(spawn(ss, item_conf, amount))),
+        GotchiNickname { .. } => GotchiNicknameResult(strerr(Err("unimplemented route"))),
         Throw {
             receiver_id,
             item_ids,

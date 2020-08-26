@@ -1,6 +1,6 @@
 //! Dumps a CSV file of the old dynamodb format into the db.
 //! input CSVs are assumed to be generated with this tool: https://pypi.org/project/export-dynamodb/
-use hcor::{item, ItemId, TileId};
+use hcor::{item, Item, ItemId, TileId};
 use serde::{Deserialize, Serialize};
 
 /* To make the errors bearable.
@@ -101,8 +101,9 @@ fn as_json<D: serde::de::DeserializeOwned>(s: &str) -> Result<D, String> {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     use chrono::{DateTime, Utc};
-    use hcor::Hackstead;
+    use hcor::{item, plant, Hackstead};
     use std::collections::HashMap;
+    use std::fs;
 
     pretty_env_logger::init();
 
@@ -110,6 +111,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .from_path("hackagotchi.csv")
         .map_err(|e| format!("invalid csv: {}", e))?;
     let mut hacksteads: HashMap<String, (Hackstead, bool)> = HashMap::new();
+
+    let item_rows_to_uuids: HashMap<usize, item::Conf> = serde_json::from_str(
+        &fs::read_to_string(&format!(
+            "{}/item_row_numbers_to_uuids.json",
+            &*hcor::config::CONFIG_PATH
+        ))
+        .unwrap(),
+    )
+    .unwrap();
+    let plant_rows_to_uuids: HashMap<usize, plant::Conf> = serde_json::from_str(
+        &fs::read_to_string(&format!(
+            "{}/plant_row_numbers_to_uuids.json",
+            &*hcor::config::CONFIG_PATH
+        ))
+        .unwrap(),
+    )
+    .unwrap();
 
     fn parse_date_time(dt: String) -> DateTime<Utc> {
         DateTime::parse_from_str(&format!("{} +0000", dt), "%Y-%m-%dT%H:%M:%S%.fZ %z")
@@ -147,24 +165,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 *found_profile = true;
             }
             1 | 2 => {
-                let archetype_handle = r.archetype_handle.expect("item no archetype");
+                let archetype_handle = r.archetype_handle.expect("item no archetype") as usize;
                 let item_id = ItemId(uuid::Uuid::parse_str(&r.id).expect("item id not uuid"));
-                let mut item = item::Item::from_archetype_handle(
-                    archetype_handle as usize,
-                    hs.profile.steader_id,
-                    item::Acquisition::Trade,
-                )
-                .unwrap();
+                let conf = item_rows_to_uuids[&archetype_handle];
+                let mut item =
+                    Item::from_conf(conf, hs.profile.steader_id, item::Acquisition::Trade);
                 item.item_id = item_id;
-                if let (Some(nickname), Some(_)) = (r.nickname, r.harvest_log) {
-                    item.gotchi_mut().unwrap().nickname = nickname;
+                if let (Some(nickname), Ok(g)) = (r.nickname, item.gotchi_mut()) {
+                    g.nickname = nickname;
                 }
-
-                hs.inventory.push(item)
+                hs.inventory.push(item);
             }
             3 => {
-                use hcor::plant::{Craft, Effect};
-
                 #[derive(serde::Serialize, serde::Deserialize)]
                 struct OldPlant {
                     pub xp: usize,
@@ -188,16 +200,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     pub item_archetype_handle: usize,
                     pub effect_archetype_handle: usize,
                 }
-                impl std::ops::Deref for OldPlant {
-                    type Target = hcor::config::PlantArchetype;
-
-                    fn deref(&self) -> &Self::Target {
-                        &hcor::config::CONFIG
-                            .plant_archetypes
-                            .get(self.archetype_handle as usize)
-                            .expect("invalid archetype handle")
-                    }
-                }
 
                 let acquired = r.acquired.expect("tiles need acquired dates");
                 let tile_id = TileId(uuid::Uuid::parse_str(&r.id).expect("tile id not uuid"));
@@ -210,25 +212,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     acquired: parse_date_time(acquired),
                     tile_id,
                     owner_id: hs.profile.steader_id,
-                    plant: p.map(|p| hcor::Plant {
-                        xp: p.xp,
-                        owner_id: hs.profile.steader_id,
-                        archetype_handle: p.archetype_handle,
-                        nickname: p.name.clone(),
-                        tile_id,
-                        lifetime_rubs: p.effects.len(),
-                        effects: p
-                            .effects
-                            .into_iter()
-                            .map(|e| Effect {
-                                effect_id: hcor::plant::EffectId(uuid::Uuid::new_v4()),
-                                effect_archetype_handle: e.effect_archetype_handle,
-                                item_archetype_handle: e.item_archetype_handle,
-                            })
-                            .collect(),
-                        craft: p.craft.map(|c| Craft {
-                            recipe_archetype_handle: c.recipe_archetype_handle,
-                        }),
+                    plant: p.map(|p| {
+                        let conf = plant_rows_to_uuids[&p.archetype_handle];
+                        hcor::Plant {
+                            owner_id: hs.profile.steader_id,
+                            conf,
+                            nickname: conf.name.clone(),
+                            tile_id,
+                            lifetime_rubs: p.effects.len(),
+                            skills: {
+                                let mut skills = plant::Skills::new(conf);
+                                skills.xp = p.xp;
+                                skills
+                            },
+                            rub_effects: p
+                                .effects
+                                .into_iter()
+                                .filter(|e| e.effect_archetype_handle == 0)
+                                .flat_map(|e| {
+                                    plant::RubEffect::item_on_plant(
+                                        item_rows_to_uuids[&e.item_archetype_handle],
+                                        conf,
+                                    )
+                                    .into_iter()
+                                })
+                                .collect(),
+                            craft: None,
+                        }
                     }),
                 })
             }

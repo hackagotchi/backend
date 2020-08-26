@@ -23,6 +23,38 @@ args = ["test", "--all-features"]
 
 [tasks.test]
 clear = true
-env = { "SERVER_URL" = "http://localhost:8000", "UPDATES_PER_SECOND" = 10000 }
+env = { SERVER_URL = "http://localhost:8000", UPDATES_PER_SECOND = 1000, NO_CLIENT_TIMEOUT = 30 }
 dependencies = ["build-test-server"]
 run_task = { name = ["run-test-server", "test-against-server"], parallel = true }
+
+[tasks.build-config-and-test]
+dependencies = [ "config" ]
+env = { "CONFIG_PATH" = "./config" }
+run_task = { name = ["test"], parallel = true }
+
+[tasks.clean-hcor]
+ignore_errors = true
+command = "rm"
+args = [ "-rf", "./hcor" ]
+
+[tasks.clean-config]
+ignore_errors = true
+command = "rm"
+args = [ "-rf", "./config" ]
+
+[tasks.build-config]
+command = "cargo"
+args = [ "r", "--bin", "verify", "--features=config_verify" ]
+
+[tasks.config]
+script_runner = "@shell"
+script = [
+'''
+git clone https://github.com/hackagotchi/config.git --branch staging
+git clone https://github.com/hackagotchi/hcor.git --branch staging
+cd hcor
+cargo r --bin verify --features=config_verify
+export CONFIG_PATH=./config
+'''
+]
+dependencies = [ "clean-config", "clean-hcor" ]

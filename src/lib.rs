@@ -194,46 +194,49 @@
 //! # use uuid::Uuid;
 //! # use hcor::{
 //! #   id::{SteaderId, ItemId},
-//! #   item::{Acquisition, Item, LoggedOwner},
-//! #   wormhole::{AskedNote::ItemHatchResult, Note, AskMessage}
+//! #   item::{self, Item, LoggedOwner},
+//! #   wormhole::{AskedNote::ItemHatchResult, Note, AskMessage},
+//! #   config::evalput::Output,
 //! # };
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let item_id = ItemId(Uuid::new_v4());
-//! # let owner_id = SteaderId(Uuid::new_v4());
 //! assert_eq!(
 //!     serde_json::from_value::<Note>(json!({
 //!         "Asked": {
 //!             "ask_id": 1337,
 //!             "note": { "ItemHatchResult": {
-//!                 "Ok": [
-//!                     {
-//!                         "item_id": item_id,
-//!                         "owner_id": owner_id,
-//!                         "archetype_handle": 5,
+//!                 "Ok": {
+//!                     "xp": 0,
+//!                     "items": [{
+//!                         "item_id": "ff8e2ac7-7c8c-4cbc-973e-d1e278f1096a",
+//!                         "owner_id": "1776527a-7d0c-4384-a427-df556d0e9294",
+//!                         // Confs show where in the config to look for more info.
+//!                         "conf": "9845a8fb-5697-45ca-b9de-c34a26d59bd2",
 //!                         "ownership_log": [
 //!                             {
-//!                                 "logged_owner_id": owner_id,
+//!                                 "logged_owner_id": "1776527a-7d0c-4384-a427-df556d0e9294",
 //!                                 "acquisition": "Farmed",
 //!                                 "owner_index": 0,
 //!                             }
 //!                         ]
-//!                     }
-//!                 ]
+//!                     }]
+//!                 }
 //!             }}
 //!         }
 //!     }))?,
 //!     Note::Asked {
 //!         ask_id: 1337,
-//!         note: ItemHatchResult(Ok(vec![{
-//!             let mut item = Item::from_archetype_handle(
-//!                 5,
-//!                 owner_id,
-//!                 Acquisition::Farmed
-//!             ).unwrap();
-//!             item.item_id = item_id;
-//!
-//!             item
-//!         }]))
+//!         note: ItemHatchResult(Ok(Output {
+//!             xp: 0,
+//!             items: vec![{
+//!                 let mut item = Item::from_conf(
+//!                     hcor::CONFIG.item_named("Warp Powder").unwrap().conf,
+//!                     SteaderId(Uuid::parse_str("1776527a-7d0c-4384-a427-df556d0e9294")?),
+//!                     item::Acquisition::Farmed,
+//!                 );
+//!                 item.item_id = ItemId(Uuid::parse_str("ff8e2ac7-7c8c-4cbc-973e-d1e278f1096a")?);
+//!                 item
+//!             }]
+//!         }))
 //!     }
 //! );
 //! // or perhaps the Ask fails,
@@ -334,27 +337,26 @@
 //! ```
 //! # use uuid::Uuid;
 //! # use serde_json::json;
-//! # use hcor::{id::TileId, plant, wormhole::{Note, RudeNote::RubEffectFinish}};
+//! # use hcor::{id::TileId, plant::{self, RubEffectId}, wormhole::{Note, RudeNote::RubEffectFinish}};
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let tile_id = TileId(Uuid::new_v4());
-//! # let effect_id = plant::EffectId(Uuid::new_v4());
 //! assert_eq!(
 //!     serde_json::from_value::<Note>(json!({
 //!         "Rude": { "RubEffectFinish": {
-//!             "tile_id": tile_id,
+//!             "tile_id": "fb5e9693-650f-432c-bc9a-4f4b980a80fe",
 //!             "effect": {
-//!                 "effect_id": effect_id,
-//!                 "item_archetype_handle": 5,
-//!                 "effect_archetype_handle": 0,
+//!                 "effect_id": "bcf3d635-dae5-4785-9319-dd1739988320",
+//!                 "item_conf": "9845a8fb-5697-45ca-b9de-c34a26d59bd2",
+//!                 // It's possible to receive multiple effects from a single item; which is this?
+//!                 "effect_index": 0,
 //!             }
 //!         }}
 //!     }))?,
 //!     Note::Rude(RubEffectFinish {
-//!         tile_id,
-//!         effect: plant::Effect {
-//!             effect_id,
-//!             item_archetype_handle: 5,
-//!             effect_archetype_handle: 0,
+//!         tile_id: TileId(Uuid::parse_str("fb5e9693-650f-432c-bc9a-4f4b980a80fe")?),
+//!         effect: plant::RubEffect {
+//!             effect_id: RubEffectId(Uuid::parse_str("bcf3d635-dae5-4785-9319-dd1739988320")?),
+//!             item_conf: hcor::CONFIG.item_named("Warp Powder").unwrap().conf,
+//!             effect_index: 0,
 //!         }
 //!     })
 //! );
@@ -389,8 +391,6 @@
 //! # use serde_json::json;
 //! # use hcor::{id::TileId, plant, wormhole::{Note, EditNote}};
 //! # fn main() -> Result<(), Box<dyn std::error::Error>> {
-//! # let tile_id = TileId(Uuid::new_v4());
-//! # let effect_id = plant::EffectId(Uuid::new_v4());
 //! assert_eq!(
 //!     serde_json::from_value::<Note>(json!({
 //!         "Edit": { "Json":
@@ -440,7 +440,7 @@
 #![allow(clippy::many_single_char_names)]
 //#![forbid(missing_docs)]
 #![forbid(unsafe_code)]
-#![forbid(intra_doc_link_resolution_failure)]
+#![forbid(broken_intra_doc_links)]
 use actix_web::{error::ResponseError, HttpResponse};
 use log::*;
 use std::fmt;
@@ -556,11 +556,5 @@ impl From<actix::MailboxError> for ServiceError {
     fn from(e: actix::MailboxError) -> ServiceError {
         error!("mailbox error: {}", e);
         ServiceError::InternalServerError
-    }
-}
-
-impl From<hcor::ConfigError> for ServiceError {
-    fn from(e: hcor::ConfigError) -> ServiceError {
-        ServiceError::bad_request(&e)
     }
 }

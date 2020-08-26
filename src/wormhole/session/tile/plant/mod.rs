@@ -10,8 +10,8 @@ use summon::summon;
 mod rub;
 use rub::rub;
 
-mod nickname;
-use nickname::nickname;
+mod skill_unlock;
+use skill_unlock::skill_unlock;
 
 mod slaughter;
 
@@ -22,17 +22,28 @@ pub fn handle_ask(ss: &mut SessSend, ask: PlantAsk) -> AskedNote {
             seed_item_id,
         } => PlantSummonResult(strerr(summon(ss, tile_id, seed_item_id))),
         Slaughter { tile_id } => PlantSlaughterResult(strerr(ss.take_plant(tile_id))),
-        Craft {
-            tile_id,
-            recipe_index,
-        } => PlantSlaughterResult(strerr(Err("unimplemented route"))),
+        KnowledgeSnort { tile_id, xp } => {
+            PlantKnowledgeSnortResult(strerr(ss.plant_mut(tile_id).map(|p| {
+                p.skills.xp += xp;
+                p.skills.xp
+            })))
+        }
         Rub {
             tile_id,
             rub_item_id,
         } => PlantRubStartResult(strerr(rub(ss, tile_id, rub_item_id))),
-        Nickname { tile_id, new_name } => {
-            PlantRenameResult(strerr(nickname(ss, tile_id, new_name)))
-        }
+        Craft { .. } => PlantCraftStartResult(strerr(Err("unimplemented route"))),
+        Nickname { .. } => PlantNicknameResult(strerr(Err("unimplemented route"))),
+        SkillUnlock {
+            tile_id,
+            source_skill_conf,
+            unlock_index,
+        } => PlantSkillUnlockResult(strerr(skill_unlock(
+            ss,
+            tile_id,
+            source_skill_conf,
+            unlock_index,
+        ))),
     }
 }
 /*
@@ -49,15 +60,15 @@ async fn plant_craft() -> hcor::ClientResult<()> {
     // (it probably fails because it's already been established in another test)
     drop(pretty_env_logger::try_init());
 
-    let seed_arch = hcor::CONFIG
-        .possession_archetypes
+    let seed_config = hcor::CONFIG
+        .possession_configetypes
         .iter()
         .find(|a| a.seed.is_some())
         .expect("no items in config that are seeds?");
 
     // create bob's stead!
     let mut bobstead = Hackstead::register().await?;
-    let seed_item = seed_arch.spawn().await?;
+    let seed_item = seed_config.spawn().await?;
     let tile = bobstead
         .free_tile()
         .expect("new hackstead no open tiles");
