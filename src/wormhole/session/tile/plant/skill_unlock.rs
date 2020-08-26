@@ -48,9 +48,9 @@ pub fn skill_unlock(
     source_skill: skill::Conf,
     unlock_index: usize,
 ) -> Result<usize, Error> {
-    let (plant_conf, plant_id) = {
+    let (plant_conf, plant_id, plant_xp) = {
         let plant = ss.plant(tile_id)?;
-        (plant.conf, plant.tile_id)
+        (plant.conf, plant.tile_id, ss.ticker.xp(&*plant) as usize)
     };
 
     if source_skill.try_lookup().is_none() {
@@ -64,12 +64,12 @@ pub fn skill_unlock(
 
     unlock
         .costs
-        .charge(&mut *ss, plant_id)?
+        .charge(&mut *ss, plant_xp, plant_id)?
         .map_err(|e| NoAfford(e))?;
 
     let plant = ss.plant_mut(tile_id)?;
     plant.skills.unlocked.push(unlock.skill);
-    Ok(plant.skills.available_points())
+    Ok(plant.skills.available_points(plant_xp))
 }
 
 #[cfg(all(feature = "hcor_client", test))]

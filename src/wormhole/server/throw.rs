@@ -108,7 +108,10 @@ impl Handler<ThrowItems> for super::Server {
             async move {
                 let ses = session?;
                 <Result<_, Error>>::Ok((
-                    SessSend::new(ses.send(super::session::GetStead).await?),
+                    SessSend::new(
+                        ses.send(super::session::GetStead).await?,
+                        ses.send(super::session::GetTicker).await?,
+                    ),
                     ses,
                 ))
             }

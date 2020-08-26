@@ -56,14 +56,14 @@ pub fn rub(ss: &mut SessSend, tile_id: TileId, item_id: ItemId) -> Result<Vec<Ru
         .filter_map(|e| Some((e.duration?, e.effect_id)))
     {
         // register any timers we'll need for the effects that'll wear off
-        ss.set_timer(plant::Timer {
-            until_finish,
-            tile_id,
-            lifecycle: plant::timer::Lifecycle::Annual,
-            kind: plant::TimerKind::Rub {
+        ss.set_timer(plant::SharedTimer::new(
+            plant::timer::Lifecycle::Annual,
+            plant::TimerKind::Rub {
                 effect_id: effect_id,
             },
-        })
+            tile_id,
+            until_finish,
+        ))
     }
 
     ss.plant_mut(tile_id)?

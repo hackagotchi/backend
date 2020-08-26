@@ -16,6 +16,7 @@ use hcor::{
 mod hackstead_guard;
 mod item;
 mod ticker;
+use ticker::Ticker;
 mod tile;
 use hackstead_guard::HacksteadGuard;
 use tile::plant;
@@ -95,7 +96,7 @@ impl Session {
     }
 
     fn spawn_ask_handler(&mut self, ctx: &mut SessionContext, ask: AskMessage) {
-        let mut ss = SessSend::new(self.hackstead.clone());
+        let mut ss = SessSend::new(self.hackstead.clone(), self.ticker.clone());
         actix::spawn(self.apply_change(ctx, handle_ask(&mut ss, ask).into(), ss))
     }
 
@@ -118,7 +119,7 @@ impl Session {
     fn tick(&self, ctx: &mut SessionContext) {
         ctx.run_interval(*UPDATE_INTERVAL, |ses, ctx| {
             use actix::fut::WrapFuture;
-            let mut ss = SessSend::new(ses.hackstead.clone());
+            let mut ss = SessSend::new(ses.hackstead.clone(), ses.ticker.clone());
             let submit = ses.ticker.tick(&mut ss);
             let fut = ses.apply_change(ctx, submit, ss);
             ctx.wait(fut.into_actor(ses))
@@ -179,6 +180,18 @@ impl Handler<GetStead> for Session {
 }
 
 #[derive(actix::Message)]
+#[rtype(result = "Ticker")]
+pub struct GetTicker;
+
+impl Handler<GetTicker> for Session {
+    type Result = Ticker;
+
+    fn handle(&mut self, GetTicker: GetTicker, _: &mut Self::Context) -> Self::Result {
+        self.ticker.clone()
+    }
+}
+
+#[derive(actix::Message)]
 #[rtype(result = "Result<AskedNote, MailboxError>")]
 pub struct DoAsk(pub hcor::Ask);
 
@@ -186,7 +199,7 @@ impl Handler<DoAsk> for Session {
     type Result = actix::ResponseFuture<Result<AskedNote, MailboxError>>;
 
     fn handle(&mut self, DoAsk(ask): DoAsk, ctx: &mut Self::Context) -> Self::Result {
-        let mut ss = SessSend::new(self.hackstead.clone());
+        let mut ss = SessSend::new(self.hackstead.clone(), self.ticker.clone());
         let HandledAsk { kind, ask_id } = handle_ask(&mut ss, AskMessage { ask, ask_id: 1337 });
 
         match kind {
@@ -227,7 +240,7 @@ impl<F: FnOnce(&mut SessSend) -> SessSendSubmit + Send + 'static> Handler<Change
         ChangeStead(change): ChangeStead<F>,
         ctx: &mut Self::Context,
     ) -> Self::Result {
-        let mut sess_send = SessSend::new(self.hackstead.clone());
+        let mut sess_send = SessSend::new(self.hackstead.clone(), self.ticker.clone());
         let f = self.apply_change(ctx, change(&mut sess_send), sess_send);
         Box::pin(async move {
             f.await;
@@ -236,9 +249,10 @@ impl<F: FnOnce(&mut SessSend) -> SessSendSubmit + Send + 'static> Handler<Change
     }
 }
 
+/*
 #[derive(actix::Message)]
 #[rtype(result = "()")]
-pub struct StartTimer(hcor::plant::Timer);
+pub struct StartTimer(hcor::plant::SharedTimer);
 
 impl Handler<StartTimer> for Session {
     type Result = ();
@@ -246,7 +260,7 @@ impl Handler<StartTimer> for Session {
     fn handle(&mut self, StartTimer(t): StartTimer, _: &mut Self::Context) {
         self.ticker.start(t);
     }
-}
+}*/
 
 /// `WebSocket` message handler
 impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for Session {
@@ -306,17 +320,19 @@ pub fn strerr<T, E: ToString>(r: Result<T, E>) -> Result<T, String> {
 /// and also exposes the addresses of the user's hackstead and server, so that
 /// you can send them messages directly if need be.
 pub struct SessSend {
-    pub pending_timers: Vec<hcor::plant::Timer>,
+    pub pending_timers: Vec<hcor::plant::SharedTimer>,
     pub pending_notes: Vec<Note>,
     pub hackstead: Hackstead,
+    pub ticker: Ticker,
 }
 impl SessSend {
     /// Create a new SessSend
-    pub fn new(hackstead: Hackstead) -> Self {
+    pub fn new(hackstead: Hackstead, ticker: Ticker) -> Self {
         Self {
             pending_timers: vec![],
             pending_notes: vec![],
             hackstead,
+            ticker,
         }
     }
 
@@ -326,7 +342,7 @@ impl SessSend {
     }
 
     /// Schedule a Timer to be set on this user's hackstead when this SessSend is submitted.
-    pub fn set_timer(&mut self, t: hcor::plant::Timer) {
+    pub fn set_timer(&mut self, t: hcor::plant::SharedTimer) {
         self.pending_timers.push(t);
     }
 
@@ -343,13 +359,22 @@ impl SessSend {
 
     /// Consumes a `SessSend`, sending all of the desired changes to the user's Session to be
     /// applied.
-    pub fn submit(self, session: &mut Session, ctx: &mut SessionContext) {
+    pub fn submit(mut self, session: &mut Session, ctx: &mut SessionContext) {
+        for t in self.pending_timers.drain(..).collect::<Vec<_>>() {
+            match session.ticker.start(&mut self, t) {
+                Ok(()) => {},
+                Err(e) => log::error!("couldn't start timer {:#?}: {}", t, e),
+            }
+        }
+
         let SessSend {
             hackstead,
+            ticker,
             mut pending_notes,
-            pending_timers,
             ..
         } = self;
+
+        session.ticker = ticker;
 
         //session.hackstead.apply(hackstead);
         let (changes, diff) = session.hackstead.apply(hackstead);
@@ -363,10 +388,6 @@ impl SessSend {
                 Orifice::Json => EditNote::Json(serde_json::to_string(&diff).unwrap()),
                 Orifice::Bincode => EditNote::Bincode(bincode::serialize(&diff).unwrap()),
             }));*/
-        }
-
-        for t in pending_timers {
-            session.ticker.start(t);
         }
 
         for n in pending_notes {

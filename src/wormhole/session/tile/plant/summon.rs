@@ -41,16 +41,8 @@ pub fn summon(ss: &mut SessSend, tile_id: TileId, item_id: ItemId) -> Result<Pla
     let seed = item.grows_into.ok_or_else(|| NotConfigured(item.clone()))?;
 
     let plant = Plant::from_conf(item.owner_id, tile_id, seed);
-    if let Some(until_finish) = plant.base_yield_duration {
-        trace!("adding yield timer");
-        ss.set_timer(plant::Timer {
-            until_finish,
-            tile_id,
-            lifecycle: plant::timer::Lifecycle::Perennial {
-                duration: until_finish,
-            },
-            kind: plant::TimerKind::Yield,
-        })
+    for t in plant::SharedTimer::for_skills(tile_id, seed, &plant.skills.unlocked) {
+        ss.set_timer(t)
     }
 
     let tile = ss.tile_mut(tile_id)?;

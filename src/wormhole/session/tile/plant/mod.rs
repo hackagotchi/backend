@@ -22,12 +22,11 @@ pub fn handle_ask(ss: &mut SessSend, ask: PlantAsk) -> AskedNote {
             seed_item_id,
         } => PlantSummonResult(strerr(summon(ss, tile_id, seed_item_id))),
         Slaughter { tile_id } => PlantSlaughterResult(strerr(ss.take_plant(tile_id))),
-        KnowledgeSnort { tile_id, xp } => {
-            PlantKnowledgeSnortResult(strerr(ss.plant_mut(tile_id).map(|p| {
-                p.skills.xp += xp;
-                p.skills.xp
-            })))
-        }
+        KnowledgeSnort { tile_id, xp } => PlantKnowledgeSnortResult(strerr({
+            ss.ticker.increase_xp(tile_id, xp as f32)
+                .map(|_| ss.ticker.xp(tile_id) as usize)
+                .map_err(|_| format!("couldn't knowledge snort, no such plant, {}", tile_id))
+        })),
         Rub {
             tile_id,
             rub_item_id,

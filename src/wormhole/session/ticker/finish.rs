@@ -1,7 +1,7 @@
 use super::SessSend;
 use hcor::{
     id,
-    plant::{Timer, TimerKind},
+    plant::{ServerTimer, SharedTimer, TimerKind},
     wormhole::RudeNote,
 };
 use std::fmt;
@@ -28,12 +28,13 @@ impl fmt::Display for Error {
 
 pub fn finish_timer(
     ss: &mut SessSend,
-    Timer { tile_id, kind, .. }: Timer,
-) -> Result<RudeNote, Error> {
+    SharedTimer { tile_id, kind, .. }: SharedTimer,
+    _: ServerTimer,
+) -> Result<Option<RudeNote>, Error> {
     use TimerKind::*;
 
     let plant = ss.plant_mut(tile_id)?;
-    Ok(match kind {
+    Ok(Some(match kind {
         Yield => RudeNote::YieldFinish {
             output: Default::default(),
             tile_id,
@@ -46,5 +47,6 @@ pub fn finish_timer(
             effect: plant.take_rub_effect(effect_id)?,
             tile_id,
         },
-    })
+        Xp => return Ok(None)
+    }))
 }
