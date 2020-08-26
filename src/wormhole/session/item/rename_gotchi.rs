@@ -1,11 +1,10 @@
 use super::SessSend;
 use hcor::id::ItemId;
-use hcor::{id, item, ConfigError, Item};
+use hcor::{id, item, Item};
 use std::fmt;
 
 #[derive(Debug)]
 pub enum Error {
-    NoSuchItemConf(ConfigError),
     NoSuch(id::NoSuch),
 }
 use Error::*;
@@ -16,17 +15,10 @@ impl From<id::NoSuch> for Error {
     }
 }
 
-impl From<hcor::ConfigError> for Error {
-    fn from(e: hcor::ConfigError) -> Error {
-        Error::NoSuchItemConf(e)
-    }
-}
-
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "couldn't spawn items: ")?;
         match self {
-            NoSuchItemConf(e) => write!(f, "no such item conf: {}", e),
             NoSuch(e) => write!(f, "no such item: {}", e),
         }
     }
@@ -69,7 +61,9 @@ mod test {
         let items = bobstead
             .spawn_items(ITEM_ARCHETYPE, ITEM_SPAWN_COUNT)
             .await?;
+        debug!("Rename the first one");
         bobstead = Hackstead::fetch(&bobstead).await?;
+        
 
         debug!("make sure those new items are in there");
         assert_eq!(

@@ -30,8 +30,8 @@ pub(super) fn handle_ask(ss: &mut SessSend, ask: ItemAsk) -> HandledAskKind {
             }))
         }
         Hatch { hatchable_item_id } => ItemHatchResult(strerr(hatch(ss, hatchable_item_id))),
-        GotchiRename { item_id, new_name } => {
-            GotchiRenameResult(strerr(rename(ss, item_id, new_name)))
+        GotchiNickname { item_id, new_name } => {
+            GotchiNicknameResult(strerr(rename(ss, item_id, new_name)))
         }
     })
 }
