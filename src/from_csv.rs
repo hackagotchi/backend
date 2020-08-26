@@ -149,21 +149,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             1 | 2 => {
                 let archetype_handle = r.archetype_handle.expect("item no archetype");
                 let item_id = ItemId(uuid::Uuid::parse_str(&r.id).expect("item id not uuid"));
-                hs.inventory.push(item::Item {
-                    item_id,
-                    owner_id: hs.profile.steader_id,
-                    archetype_handle: archetype_handle as usize,
-                    gotchi: if let (Some(nickname), Some(_)) = (r.nickname, r.harvest_log) {
-                        Some(item::Gotchi { nickname })
-                    } else {
-                        None
-                    },
-                    ownership_log: vec![item::LoggedOwner {
-                        logged_owner_id: hs.profile.steader_id,
-                        acquisition: item::Acquisition::Trade,
-                        owner_index: 0,
-                    }],
-                })
+                let mut item = item::Item::from_archetype_handle(
+                    archetype_handle as usize,
+                    hs.profile.steader_id,
+                    item::Acquisition::Trade,
+                )
+                .unwrap();
+                item.item_id = item_id;
+                if let (Some(nickname), Some(_)) = (r.nickname, r.harvest_log) {
+                    item.gotchi_mut().unwrap().nickname = nickname;
+                }
+
+                hs.inventory.push(item)
             }
             3 => {
                 use hcor::plant::{Craft, Effect};
