@@ -44,41 +44,25 @@ mod test {
         // (it probably fails because it's already been established in another test)
         drop(pretty_env_logger::try_init());
 
+        let (_, seed_arch) = hcor::CONFIG
+            .seeds()
+            .next()
+            .expect("No items in config that are seeds?");
+
         debug!("create bob's stead");
         let mut bobstead = Hackstead::register().await?;
-
-        // we'll need to keep track of how many items we have to see if spawning works.
-        fn count_relevant_items(hackstead: &Hackstead) -> usize {
-            hackstead
-                .inventory
-                .iter()
-                .filter(|i| i.archetype_handle == ITEM_ARCHETYPE)
-                .count()
-        }
-        let starting_item_count = count_relevant_items(&bobstead);
-
         debug!("spawn bob some items and refresh his stead");
-        let items = bobstead
-            .spawn_items(ITEM_ARCHETYPE, ITEM_SPAWN_COUNT)
-            .await?;
-        debug!("Rename the first one");
+
+        let seed_item = seed_arch.spawn().await?;
+        let open_tile = bobstead.free_tile().expect("New hackstead no open land?");
+
+        let plant = open_tile.plant_seed(seed_item).await?;
+        plant.rename("bob's plant jr").await?;
+
+        //Refresh stead
         bobstead = Hackstead::fetch(&bobstead).await?;
 
-        debug!("make sure those new items are in there");
-        assert_eq!(
-            count_relevant_items(&bobstead) - starting_item_count,
-            ITEM_SPAWN_COUNT
-        );
-
-        debug!("make sure each of the items the API says we got are in bob's inventory.");
-        for item in items {
-            assert!(
-                bobstead.inventory.contains(&item),
-                "bobstead did not contain spawned item: \nitem: {:#?}\ninventory: {:#?}",
-                item,
-                bobstead.inventory
-            );
-        }
+        assert_eq!(bobstead.plant(&plant).name, "bob's plant jr");
 
         debug!("kill bob so he's not left in the database");
         bobstead.slaughter().await?;
