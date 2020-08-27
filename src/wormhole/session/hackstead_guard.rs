@@ -1,30 +1,83 @@
+use super::Orifice;
 use hcor::serde_diff::Diff;
-use hcor::Hackstead;
+use hcor::{wormhole::EditNote, Hackstead};
+use std::fmt;
 
 /// We need all changes to a Hackstead to be also sent to the client;
 /// to insure that we do not mutate the hackstead without also sending changes to the client,
 /// we have this HacksteadGuard struct.
 pub struct HacksteadGuard {
     hackstead: Hackstead,
-    old: Hackstead,
+}
+
+#[derive(Debug)]
+pub enum DiffError {
+    Json(serde_json::Error),
+    Bincode(bincode::Error),
+    Patching(std::io::Error),
+}
+type DiffResult<T> = Result<T, DiffError>;
+impl From<bincode::Error> for DiffError {
+    fn from(e: bincode::Error) -> DiffError {
+        DiffError::Bincode(e)
+    }
+}
+impl From<serde_json::Error> for DiffError {
+    fn from(e: serde_json::Error) -> DiffError {
+        DiffError::Json(e)
+    }
+}
+impl From<std::io::Error> for DiffError {
+    fn from(e: std::io::Error) -> DiffError {
+        DiffError::Patching(e)
+    }
+}
+impl fmt::Display for DiffError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "couldn't create diff for EditNote: ")?;
+
+        match self {
+            DiffError::Bincode(e) => {
+                write!(f, "couldn't serialize/deserialize hackstead bincode: {}", e)
+            }
+            DiffError::Json(e) => write!(f, "couldn't serialize/deserialize hackstead json: {}", e),
+            DiffError::Patching(e) => write!(f, "couldn't create bincode binary patch: {}", e),
+        }
+    }
 }
 
 impl HacksteadGuard {
     pub fn new(hs: Hackstead) -> Self {
         HacksteadGuard {
             hackstead: hs.clone(),
-            old: hs,
         }
     }
 
-    pub fn apply(&mut self, new: Hackstead) -> (bool, Diff<Hackstead>) {
-        self.old = self.hackstead.clone();
-        self.hackstead = new;
+    fn json_diff(&mut self, new: &Hackstead) -> DiffResult<String> {
+        Ok(serde_json::to_string(&Diff::serializable(
+            &self.hackstead,
+            &new,
+        ))?)
+    }
 
-        (
-            self.old != self.hackstead,
-            Diff::serializable(&self.old, &self.hackstead),
-        )
+    fn bincode_diff(&mut self, new: &Hackstead) -> DiffResult<Vec<u8>> {
+        let old_bincode = bincode::serialize(&self.hackstead)?;
+        let new_bincode = bincode::serialize(&new)?;
+
+        let mut diff_data = vec![];
+        hcor::bidiff::simple_diff(&old_bincode, &new_bincode, &mut diff_data)?;
+
+        Ok(diff_data)
+    }
+
+    pub fn set(&mut self, new: Hackstead, orifice: Orifice) -> DiffResult<EditNote> {
+        let note = match orifice {
+            Orifice::Json => EditNote::Json(self.json_diff(&new)?),
+            Orifice::Bincode => EditNote::Bincode(self.bincode_diff(&new)?),
+        };
+
+        self.hackstead = new;
+        Ok(note)
     }
 }
 

@@ -9,7 +9,7 @@ use log::*;
 
 use super::server::{self, Server};
 use hcor::{
-    wormhole::{AskMessage, AskedNote, EditNote, CLIENT_TIMEOUT, HEARTBEAT_INTERVAL},
+    wormhole::{AskMessage, AskedNote, CLIENT_TIMEOUT, HEARTBEAT_INTERVAL},
     Hackstead, IdentifiesSteader, Note, UPDATE_INTERVAL,
 };
 
@@ -351,18 +351,11 @@ impl SessSend {
             ..
         } = self;
 
-        //session.hackstead.apply(hackstead);
-        let (changes, diff) = session.hackstead.apply(hackstead);
-
-        if changes {
-            pending_notes.push(Note::Edit(EditNote::Json(
-                serde_json::to_string(&diff).unwrap(),
-            )));
-            /* TODO:
-            pending_notes.push(Note::Edit(match session.orifice {
-                Orifice::Json => EditNote::Json(serde_json::to_string(&diff).unwrap()),
-                Orifice::Bincode => EditNote::Bincode(bincode::serialize(&diff).unwrap()),
-            }));*/
+        if *session.hackstead != hackstead {
+            match session.hackstead.set(hackstead, session.orifice) {
+                Err(e) => error!("couldn't make edit note: {}", e),
+                Ok(o) => pending_notes.push(Note::Edit(o)),
+            }
         }
 
         for t in pending_timers {
