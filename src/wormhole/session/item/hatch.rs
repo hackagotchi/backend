@@ -53,7 +53,6 @@ mod test {
     async fn hatch() -> hcor::ClientResult<()> {
         use hcor::Hackstead;
         use log::*;
-        use tokio::time::{delay_for, Duration};
 
         // attempt to establish logging, do nothing if it fails
         // (it probably fails because it's already been established in another test)
@@ -89,7 +88,6 @@ mod test {
         assert_eq!(
             bobstead.inventory.len(),
             {
-                delay_for(Duration::from_millis(400)).await;
                 bobstead.server_sync().await?;
                 bobstead.inventory.len()
             },
@@ -108,7 +106,7 @@ mod test {
         );
         let starting_inventory = bobstead.inventory.clone();
 
-        delay_for(Duration::from_millis(400)).await;
+        error!("hatched {} items", hatch_output.items.len());
         bobstead.server_sync().await?;
         let new_inventory = bobstead.inventory.clone();
         assert_eq!(

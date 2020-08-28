@@ -542,6 +542,13 @@ impl From<serde_json::Error> for ServiceError {
     }
 }
 
+impl From<bincode::Error> for ServiceError {
+    fn from(e: bincode::Error) -> ServiceError {
+        error!("bincode error: {}", e);
+        ServiceError::InternalServerError
+    }
+}
+
 impl From<std::io::Error> for ServiceError {
     fn from(e: std::io::Error) -> ServiceError {
         error!("io error: {}", e);
