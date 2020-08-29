@@ -1,18 +1,12 @@
 use super::SessSend;
-use hcor::{item, ConfigError, Item};
+use hcor::{item, Item};
 use std::fmt;
 
 #[derive(Debug)]
 pub enum Error {
-    NoSuchItemConf(ConfigError),
+    NoSuchItemConf(item::Conf),
 }
 use Error::*;
-
-impl From<hcor::ConfigError> for Error {
-    fn from(e: hcor::ConfigError) -> Error {
-        Error::NoSuchItemConf(e)
-    }
-}
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
@@ -23,16 +17,20 @@ impl fmt::Display for Error {
     }
 }
 
-pub fn spawn(ss: &mut SessSend, item_conf: usize, amount: usize) -> Result<Vec<Item>, Error> {
+pub fn spawn(ss: &mut SessSend, item_conf: item::Conf, amount: usize) -> Result<Vec<Item>, Error> {
+    if item_conf.try_lookup().is_none() {
+        return Err(NoSuchItemConf(item_conf));
+    }
+
     let items: Vec<Item> = (0..amount)
         .map(|_| {
-            Item::from_archetype_handle(
+            Item::from_conf(
                 item_conf,
                 ss.profile.steader_id,
                 item::Acquisition::spawned(),
             )
         })
-        .collect::<hcor::ConfigResult<_>>()?;
+        .collect();
 
     ss.inventory.append(&mut items.clone());
     Ok(items)
@@ -43,7 +41,8 @@ mod test {
     #[actix_rt::test]
     /// NOTE: requires that at least one item exists in the config!
     async fn spawn() -> hcor::ClientResult<()> {
-        use super::test::{ITEM_ARCHETYPE, ITEM_SPAWN_COUNT};
+        const ITEM_SPAWN_COUNT: _ = 10;
+        let item_conf = *hcor::CONFIG.items().keys().next().unwrap();
         use hcor::Hackstead;
         use log::*;
 
@@ -59,16 +58,14 @@ mod test {
             hackstead
                 .inventory
                 .iter()
-                .filter(|i| i.archetype_handle == ITEM_ARCHETYPE)
+                .filter(|i| i.conf == item_conf)
                 .count()
         }
         let starting_item_count = count_relevant_items(&bobstead);
 
         debug!("spawn bob some items and refresh his stead");
-        let items = bobstead
-            .spawn_items(ITEM_ARCHETYPE, ITEM_SPAWN_COUNT)
-            .await?;
-        bobstead = Hackstead::fetch(&bobstead).await?;
+        let items = bobstead.spawn_items(ITEM_CONF, ITEM_SPAWN_COUNT).await?;
+        bobstead.server_sync().await?;
 
         debug!("make sure those new items are in there");
         assert_eq!(

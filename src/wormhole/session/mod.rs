@@ -9,13 +9,15 @@ use log::*;
 
 use super::server::{self, Server};
 use hcor::{
-    wormhole::{AskMessage, AskedNote, EditNote, CLIENT_TIMEOUT, HEARTBEAT_INTERVAL},
+    wormhole::{AskMessage, AskedNote, CLIENT_TIMEOUT, HEARTBEAT_INTERVAL},
     Hackstead, IdentifiesSteader, Note, UPDATE_INTERVAL,
 };
 
+mod hackstead_guard;
 mod item;
 mod ticker;
 mod tile;
+use hackstead_guard::HacksteadGuard;
 use tile::plant;
 
 /// Which opening to the wormhole are they making use of?
@@ -32,7 +34,7 @@ pub enum Orifice {
 /// that it can give it Notes to send down the Wormhole (or in this case, Websocket) to be displayed
 /// to the user.
 pub struct Session {
-    hackstead: Hackstead,
+    hackstead: HacksteadGuard,
     heartbeat: Instant,
     orifice: Orifice,
     server: Addr<Server>,
@@ -43,13 +45,13 @@ type SessionContext = ws::WebsocketContext<Session>;
 impl Session {
     /// Constructs a new wormhole session from the uuid of the user who owns this session
     /// and an address which points to the Server.
-    pub fn new(mut hackstead: Hackstead, srv: &Addr<Server>, orifice: Orifice) -> Self {
+    pub fn new(mut hs: Hackstead, srv: &Addr<Server>, orifice: Orifice) -> Self {
         Self {
             heartbeat: Instant::now(),
             server: srv.clone(),
-            ticker: ticker::Ticker::new(&mut hackstead),
+            ticker: ticker::Ticker::new(&mut hs),
             orifice,
-            hackstead,
+            hackstead: HacksteadGuard::new(hs),
         }
     }
 
@@ -114,10 +116,12 @@ impl Session {
 
     #[allow(clippy::unused_self)]
     fn tick(&self, ctx: &mut SessionContext) {
-        ctx.run_interval(*UPDATE_INTERVAL, |act, ctx| {
-            let mut ticker = std::mem::take(&mut act.ticker);
-            ticker.tick(act, ctx);
-            act.ticker = ticker;
+        ctx.run_interval(*UPDATE_INTERVAL, |ses, ctx| {
+            use actix::fut::WrapFuture;
+            let mut ss = SessSend::new(ses.hackstead.clone());
+            let submit = ses.ticker.tick(&mut ss);
+            let fut = ses.apply_change(ctx, submit, ss);
+            ctx.wait(fut.into_actor(ses))
         });
     }
 }
@@ -170,9 +174,7 @@ impl Handler<GetStead> for Session {
     type Result = Hackstead;
 
     fn handle(&mut self, GetStead: GetStead, _: &mut Self::Context) -> Self::Result {
-        let mut hs = self.hackstead.clone();
-        hs.timers = self.ticker.timers.clone();
-        hs
+        self.hackstead.clone()
     }
 }
 
@@ -342,34 +344,26 @@ impl SessSend {
     /// Consumes a `SessSend`, sending all of the desired changes to the user's Session to be
     /// applied.
     pub fn submit(self, session: &mut Session, ctx: &mut SessionContext) {
-        use hcor::serde_diff::Diff;
-
-        let Self {
-            hackstead: mut new,
+        let SessSend {
+            hackstead,
             mut pending_notes,
             pending_timers,
             ..
         } = self;
 
-        let old = session.hackstead.clone();
-        assert_eq!(new.local_version, old.local_version);
-        pending_notes.push(Note::Edit(match session.orifice {
-            Orifice::Json => {
-                EditNote::Json(serde_json::to_string(&Diff::serializable(&old, &new)).unwrap())
+        if *session.hackstead != hackstead {
+            match session.hackstead.set(hackstead, session.orifice) {
+                Err(e) => error!("couldn't make edit note: {}", e),
+                Ok(o) => pending_notes.push(Note::Edit(o)),
             }
-            Orifice::Bincode => {
-                EditNote::Bincode(bincode::serialize(&Diff::serializable(&old, &new)).unwrap())
-            }
-        }));
-        new.local_version += 1;
-        session.hackstead = new;
-
-        for n in pending_notes {
-            session.send_note(ctx, &n);
         }
 
         for t in pending_timers {
             session.ticker.start(t);
+        }
+
+        for n in pending_notes {
+            session.send_note(ctx, &n);
         }
     }
 }

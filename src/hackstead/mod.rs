@@ -18,22 +18,20 @@ fn user_path(iu: impl IdentifiesUser) -> String {
 }
 
 fn stead_path(is: impl IdentifiesSteader) -> String {
-    format!("stead/{}.json", is.steader_id())
+    format!("stead/{}.bincode", is.steader_id())
 }
 
 fn slack_path(slack: &str) -> String {
-    format!("slack/{}.json", slack)
+    format!("slack/{}.bincode", slack)
 }
 
 pub fn fs_get_stead(user_id: impl IdentifiesUser) -> Result<Hackstead, ServiceError> {
-    Ok(serde_json::from_str(&fs::read_to_string(user_path(
-        user_id,
-    ))?)?)
+    Ok(bincode::deserialize(&fs::read(user_path(user_id))?)?)
 }
 
 pub fn fs_put_stead(hs: &Hackstead) -> Result<(), ServiceError> {
     let stead_path = stead_path(hs);
-    fs::write(&stead_path, serde_json::to_string(hs)?)?;
+    fs::write(&stead_path, bincode::serialize(hs)?)?;
 
     if let Some(s) = hs.profile.slack_id.as_ref() {
         fs::hard_link(&stead_path, &slack_path(s))?;

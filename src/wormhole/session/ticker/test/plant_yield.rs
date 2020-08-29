@@ -1,23 +1,17 @@
 #[actix_rt::test]
 async fn plant_yield() -> hcor::ClientResult<()> {
     use super::true_or_timeout;
-    use hcor::{wormhole::RudeNote::*, Hackstead, IdentifiesTile, CONFIG};
+    use hcor::{wormhole::RudeNote::*, Hackstead, IdentifiesTile};
     use log::*;
 
     // attempt to establish logging, do nothing if it fails
     // (it probably fails because it's already been established in another test)
     drop(pretty_env_logger::try_init());
 
-    let (seed_arch, yield_duration) = hcor::CONFIG
+    let (seed_config, yield_duration) = hcor::CONFIG
         .seeds()
-        .filter_map(|(seed, seed_arch)| {
-            Some((
-                seed_arch,
-                CONFIG
-                    .find_plant(&seed.grows_into)
-                    .ok()?
-                    .base_yield_duration?,
-            ))
+        .filter_map(|(grows_into, seed_config)| {
+            Some((seed_config, grows_into.base_yield_duration?))
         })
         .min_by_key(|(_, yd)| *yd as usize)
         .expect("no seeds in config that yield?");
@@ -29,7 +23,7 @@ async fn plant_yield() -> hcor::ClientResult<()> {
     let plant = bobstead
         .free_tile()
         .unwrap()
-        .plant_seed(&seed_arch.spawn().await?)
+        .plant_seed(&seed_config.spawn().await?)
         .await?;
     let tid = plant.tile_id();
 

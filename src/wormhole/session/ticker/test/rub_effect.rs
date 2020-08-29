@@ -3,20 +3,21 @@
 async fn plant_rub_wear_off() -> hcor::ClientResult<()> {
     use super::true_or_timeout;
     use futures::{stream, StreamExt};
-    use hcor::{wormhole::RudeNote::*, Hackstead};
+    use hcor::{plant::RubEffect, wormhole::RudeNote::*, Hackstead};
     use log::*;
 
     // attempt to establish logging, do nothing if it fails
     // (it probably fails because it's already been established in another test)
     drop(pretty_env_logger::try_init());
 
-    let (seed_arch, rub_wear_off_arch) = hcor::CONFIG
+    let (seed_config, rub_wear_off_config) = hcor::CONFIG
         .seeds()
-        .find_map(|(seed, seed_arch)| {
+        .find_map(|(grows_into, seed_config)| {
             Some((
-                seed_arch,
-                hcor::CONFIG.possession_archetypes.iter().find(|a| {
-                    a.rub_effects_for_plant(&seed.grows_into)
+                seed_config,
+                hcor::CONFIG.items.keys().find(|c| {
+                    RubEffect::item_on_plant(**c, grows_into)
+                        .iter()
                         .any(|e| e.duration.is_some())
                 })?,
             ))
@@ -28,14 +29,14 @@ async fn plant_rub_wear_off() -> hcor::ClientResult<()> {
 
     // make plant
     info!("spawning first item");
-    let seed_item = seed_arch.spawn().await?;
+    let seed_item = seed_config.spawn().await?;
     info!("seed item spawn");
     let tile = bobstead.free_tile().expect("new hackstead no open tiles");
     let plant = tile.plant_seed(&seed_item).await?;
 
     // rub 2 items, simultaneously
-    for i in 0..2 {
-        let rub_item = rub_wear_off_arch.spawn().await?;
+    for i in 0..2_usize {
+        let rub_item = rub_wear_off_config.spawn().await?;
         let effects = plant.rub_with(&rub_item).await?;
 
         stream::iter(

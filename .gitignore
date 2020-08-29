@@ -3,5 +3,8 @@
 Cargo.lock
 hackagotchi.csv
 
+/hcor
+/config
+
 /stead
 /slack

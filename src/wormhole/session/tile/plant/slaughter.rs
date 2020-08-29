@@ -58,7 +58,7 @@ async fn slaughter() -> hcor::ClientResult<()> {
     let mut doomed_plant: Plant = tile.plant_seed(&seed_item).await?;
 
     // make sure that tile is no longer open
-    bobstead = Hackstead::fetch(&bobstead).await?;
+    bobstead.server_sync().await?;
     assert!(
         !bobstead.free_tiles().any(|t| t.tile_id == tile.tile_id),
         "bob's plant is still not open even though we just killed its plant!"
@@ -68,7 +68,7 @@ async fn slaughter() -> hcor::ClientResult<()> {
     doomed_plant = doomed_plant.slaughter().await?;
 
     // make sure there's no plant now
-    bobstead = Hackstead::fetch(&bobstead).await?;
+    bobstead.server_sync().await?;
     assert!(
         bobstead.free_tiles().any(|t| t.tile_id == tile.tile_id),
         "bob's plant is still not open even though we just killed its plant!"
